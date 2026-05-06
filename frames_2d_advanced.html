@@ -283,15 +283,6 @@
         <label class="field">Upload Pitch image
           <input id="pitchFile" type="file" accept="image/png,image/jpeg,image/webp" />
         </label>
-        <label class="field">Match JSON
-          <input id="matchPath" value="2061307_match_data.json" />
-        </label>
-        <label class="field">Tracking JSONL
-          <input id="trackingPath" value="2061307_tracking_extrapolated.jsonl" />
-        </label>
-        <label class="field">Pitch image
-          <input id="pitchPath" value="Football Pitch.png" />
-        </label>
         <button id="loadBtn">Load + Compute</button>
         <div id="loadStatus" class="status">Idle</div>
       </section>
@@ -480,9 +471,6 @@
     const $ = (id) => document.getElementById(id);
 
     const ui = {
-      matchPath: $("matchPath"),
-      trackingPath: $("trackingPath"),
-      pitchPath: $("pitchPath"),
       matchFile: $("matchFile"),
       trackingFile: $("trackingFile"),
       pitchFile: $("pitchFile"),
@@ -2064,7 +2052,7 @@
           const [matchText, trackingText, pitchData] = await Promise.all([
             readFileAsText(uploadedMatch),
             readFileAsText(uploadedTracking),
-            uploadedPitch ? readFileAsDataURL(uploadedPitch) : Promise.resolve(ui.pitchPath.value.trim()),
+            uploadedPitch ? readFileAsDataURL(uploadedPitch) : Promise.resolve(""),
           ]);
 
           [match, pitch] = await Promise.all([
@@ -2075,19 +2063,18 @@
         } else if (fromInlineBundle) {
           [match, pitch] = await Promise.all([
             Promise.resolve(sourceBundle.match),
-            loadImage(sourceBundle.pitchDataUrl || ui.pitchPath.value.trim()),
+            loadImage(sourceBundle.pitchDataUrl || ""),
           ]);
           trackingRaw = parseJSONLText(sourceBundle.trackingText);
-        } else {
-          const matchPath = fromUrlBundle ? sourceBundle.matchUrl : ui.matchPath.value.trim();
-          const trackingPath = fromUrlBundle ? sourceBundle.trackingUrl : ui.trackingPath.value.trim();
-          const pitchPath = fromUrlBundle ? (sourceBundle.pitchUrl || ui.pitchPath.value.trim()) : ui.pitchPath.value.trim();
-
-          [match, pitch] = await Promise.all([loadJSON(matchPath), loadImage(pitchPath)]);
+        } else if (fromUrlBundle) {
+          [match, pitch] = await Promise.all([
+            loadJSON(sourceBundle.matchUrl),
+            loadImage(sourceBundle.pitchUrl || ""),
+          ]);
 
           let lastUpdate = 0;
           setStatus("Streaming tracking JSONL...", "");
-          trackingRaw = await loadJSONLChunked(trackingPath, (p) => {
+          trackingRaw = await loadJSONLChunked(sourceBundle.trackingUrl, (p) => {
             const now = Date.now();
             if (!p.done && now - lastUpdate < 250) return;
             lastUpdate = now;
@@ -2096,6 +2083,8 @@
             const tail = p.done ? "done" : `${mb}MB/${totalMb}MB`;
             setStatus(`Streaming tracking JSONL... rows ${p.rows} (${tail})`, "");
           });
+        } else {
+          throw new Error("Please upload Match JSON and Tracking JSONL, then click Load + Compute.");
         }
 
         const playersById = initPlayers(match);

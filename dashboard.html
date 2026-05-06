@@ -203,7 +203,6 @@
 
         <div class="row">
           <button id="launchBtn">Launch Scenario</button>
-          <button id="launchDefaultsBtn">Open Engine With Local Defaults</button>
         </div>
 
         <div id="status" class="status">Waiting for upload and scenario selection.</div>
@@ -283,17 +282,11 @@
       pitchFile: document.getElementById("pitchFile"),
       smoothWindow: document.getElementById("smoothWindow"),
       launchBtn: document.getElementById("launchBtn"),
-      launchDefaultsBtn: document.getElementById("launchDefaultsBtn"),
       scenarioGrid: document.getElementById("scenarioGrid"),
       status: document.getElementById("status"),
     };
 
     let selectedScenario = scenarios[0];
-    const hostedDefaults = [
-      "2061307_match_data.json",
-      "2061307_tracking_extrapolated.jsonl",
-      "Football Pitch.png",
-    ];
 
     function setStatus(msg, cls = "") {
       els.status.textContent = msg;
@@ -302,27 +295,6 @@
 
     function makeLaunchToken() {
       return `anselmo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    }
-
-    async function checkHostedDefaults() {
-      const checks = await Promise.all(
-        hostedDefaults.map(async (path) => {
-          try {
-            const res = await fetch(path, { method: "HEAD", cache: "no-store" });
-            return { path, ok: res.ok };
-          } catch {
-            return { path, ok: false };
-          }
-        })
-      );
-
-      const missing = checks.filter((c) => !c.ok).map((c) => c.path);
-      if (missing.length) {
-        els.launchDefaultsBtn.disabled = true;
-        setStatus(`Hosted sample files missing: ${missing.join(", ")}. Upload files to continue.`, "err");
-      } else {
-        els.launchDefaultsBtn.disabled = false;
-      }
     }
 
     function readFileAsText(file) {
@@ -404,24 +376,12 @@
       }
     }
 
-    function launchDefaults() {
-      if (els.launchDefaultsBtn.disabled) {
-        setStatus("Hosted defaults are unavailable. Please upload files and launch scenario.", "err");
-        return;
-      }
-      sessionStorage.removeItem("anselmoUploadBundle");
-      sessionStorage.removeItem("anselmoScenarioConfig");
-      window.open("frames_2d_advanced.html", "_blank", "noopener");
-    }
-
     function bind() {
       els.launchBtn.addEventListener("click", launchScenario);
-      els.launchDefaultsBtn.addEventListener("click", launchDefaults);
     }
 
     renderScenarioCards();
     bind();
-    checkHostedDefaults();
   </script>
 </body>
 </html>
