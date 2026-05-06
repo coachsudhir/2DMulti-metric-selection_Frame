@@ -20,6 +20,8 @@
       --ok: #1b7f62;
       --warn: #bc3908;
       --brand: #0d6e54;
+      --accent: #0d6e54;
+      --fg: #211f1a;
       --shadow: 0 10px 30px rgba(25, 23, 18, 0.09);
     }
 
@@ -165,7 +167,7 @@
       font-weight: 700;
       letter-spacing: 0.03em;
       min-width: 58px;
-      background: var(--accent);
+      background: var(--brand);
       color: #fff;
       border: none;
       border-radius: 6px;
@@ -389,14 +391,10 @@
     <main class="right">
       <section class="topbar">
         <div class="transport-group">
-          <button id="back10Btn" class="btn-major" title="Jump back 10 seconds">⏮ -10s</button>
-          <button id="backBtn" class="btn-minor" title="Step back 0.1 seconds">◀ 0.1s</button>
-          <div class="divider"></div>
+          <button id="backBtn" class="btn-major" title="Jump back 10 seconds">⏮ -10s</button>
           <button id="playBtn" class="btn-play">▶ Play</button>
           <button id="pauseBtn" class="btn-pause">⏸ Pause</button>
-          <div class="divider"></div>
-          <button id="fwdBtn" class="btn-minor" title="Step forward 0.1 seconds">0.1s ▶</button>
-          <button id="fwd10Btn" class="btn-major" title="Jump forward 10 seconds">+10s ⏭</button>
+          <button id="fwdBtn" class="btn-major" title="Jump forward 10 seconds">+10s ⏭</button>
         </div>
         <label style="margin-left:8px;">Frame <input id="frameSlider" type="range" min="0" max="0" value="0" style="width:260px;vertical-align:middle;" /></label>
         <span id="frameText" style="font-size:0.8rem;">Frame: 0</span>
@@ -510,10 +508,8 @@
 
       playBtn: $("playBtn"),
       pauseBtn: $("pauseBtn"),
-      back10Btn: $("back10Btn"),
       backBtn: $("backBtn"),
       fwdBtn: $("fwdBtn"),
-      fwd10Btn: $("fwd10Btn"),
       frameSlider: $("frameSlider"),
       frameText: $("frameText"),
       timeText: $("timeText"),
@@ -2231,10 +2227,8 @@
 
       ui.playBtn.addEventListener("click", play);
       ui.pauseBtn.addEventListener("click", pause);
-      ui.back10Btn.addEventListener("click", () => step(-100));
-      ui.backBtn.addEventListener("click", () => step(-1));
-      ui.fwdBtn.addEventListener("click", () => step(1));
-      ui.fwd10Btn.addEventListener("click", () => step(100));
+      ui.backBtn.addEventListener("click", () => step(-100));
+      ui.fwdBtn.addEventListener("click", () => step(100));
       ui.frameSlider.addEventListener("input", () => {
         state.frameIndex = Number(ui.frameSlider.value);
         render();
