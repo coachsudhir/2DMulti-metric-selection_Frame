@@ -331,12 +331,6 @@
             <option value="temporal">Temporal evolution mode</option>
           </select>
         </label>
-        <label class="field">Comparative glyph
-          <select id="comparisonVizMode">
-            <option value="splitHalo">Split halo (recommended)</option>
-            <option value="deltaDisc">Delta disc</option>
-          </select>
-        </label>
 
         <div class="mode-sep">Player focus (single-player analysis)</div>
         <label class="field">Player focus
@@ -481,7 +475,6 @@
       metricGroups: $("metricGroups"),
 
       modeSel: $("modeSel"),
-      comparisonVizMode: $("comparisonVizMode"),
       focusSel: $("focusSel"),
       compareASel: $("compareASel"),
       compareBSel: $("compareBSel"),
@@ -541,7 +534,6 @@
       normalizers: {},
 
       mode: "overlay",
-      comparisonVizMode: "splitHalo",
       focus: "ALL",
       compareA: "",
       compareB: "",
@@ -729,14 +721,6 @@
       return { x: px, y: py };
     }
 
-    function ensureDistinctTeamColors(homeHex, awayHex) {
-      const a = rgb(homeHex);
-      const b = rgb(awayHex);
-      const dist = Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2);
-      if (dist >= 80) return { home: homeHex, away: awayHex };
-      return { home: homeHex, away: "#d62728" };
-    }
-
     function teamColorByPlayer(playerId) {
       const teamId = state.playersById[playerId]?.teamId;
       return state.teamColors[teamId] || "#3a3a3a";
@@ -834,14 +818,6 @@
       const diff = ownVal - oppVal;
       const range = (state.normalizers[metricId]?.max || 1) - (state.normalizers[metricId]?.min || 0) || 1;
       const d = Math.max(-1, Math.min(1, diff / range));
-
-      if (state.comparisonVizMode === "deltaDisc") {
-        pitchCtx.beginPath();
-        pitchCtx.fillStyle = d >= 0 ? "rgba(18,138,103,0.78)" : "rgba(203,57,37,0.78)";
-        pitchCtx.arc(c.x, c.y, 10 + Math.abs(d) * 16, 0, Math.PI * 2);
-        pitchCtx.fill();
-        return;
-      }
 
       pitchCtx.beginPath();
       pitchCtx.fillStyle = "rgba(255,255,255,0.82)";
@@ -1357,9 +1333,13 @@
       const selected = [...state.selectedMetrics].filter((id) => state.layerCfg[id]?.visible !== false);
       const allSelected = selected.length === METRICS.length;
       const mode = allSelected ? "composite" : state.mode;
+      if (mode === "comparative") {
+        // Keep A/B anchored to players active in the current frame so comparative markers stay visible.
+        ensureComparativeSelection();
+      }
       const compareA = Number(state.compareA || 0);
       const compareB = Number(state.compareB || 0);
-      const compareSet = new Set([compareA, compareB]);
+      const compareSet = new Set([String(compareA), String(compareB)]);
 
       if (selected.length >= 3 && mode === "overlay") {
         drawHeatComposite(frame, selected);
@@ -1372,7 +1352,7 @@
       for (const p of frame.player_data || []) {
         const pid = p.player_id;
         if (mode === "comparative") {
-          if (!compareSet.has(pid)) continue;
+          if (!compareSet.has(String(pid))) continue;
         } else if (state.focus !== "ALL" && Number(state.focus) !== pid) {
           continue;
         }
@@ -1527,11 +1507,46 @@
       ui.compareASel.disabled = false;
       ui.compareBSel.disabled = false;
       ui.focusSel.disabled = false;
-      ui.comparisonVizMode.disabled = !comparative;
 
       ui.compareASel.title = comparative ? "Comparison player A" : "Select to switch into comparative mode";
       ui.compareBSel.title = comparative ? "Comparison player B" : "Select to switch into comparative mode";
       ui.focusSel.title = comparative ? "Focus is ignored in comparative mode" : "Focused player in current mode";
+    }
+
+    function getActivePlayerIdsAtFrame(frameIndex) {
+      const frame = state.frames[frameIndex];
+      if (!frame) return [];
+      const ids = [];
+      const seen = new Set();
+      for (const p of frame.player_data || []) {
+        const pid = Number(p.player_id);
+        if (!pid || seen.has(pid)) continue;
+        if (!state.playersById[pid]) continue;
+        if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+        seen.add(pid);
+        ids.push(pid);
+      }
+      return ids;
+    }
+
+    function ensureComparativeSelection() {
+      const active = getActivePlayerIdsAtFrame(state.frameIndex);
+      const pool = active.length >= 2 ? active : state.playerList.map((p) => p.id);
+      if (!pool.length) return;
+
+      let a = Number(state.compareA || 0);
+      let b = Number(state.compareB || 0);
+      const hasA = pool.includes(a);
+      const hasB = pool.includes(b);
+
+      if (!hasA) a = pool[0];
+      if (!hasB) b = pool.find((id) => id !== a) ?? a;
+      if (a === b) b = pool.find((id) => id !== a) ?? b;
+
+      state.compareA = String(a);
+      state.compareB = String(b);
+      ui.compareASel.value = state.compareA;
+      ui.compareBSel.value = state.compareB;
     }
 
     function renderReadout() {
@@ -1574,17 +1589,42 @@
         return;
       }
 
-      const focusId = state.focus === "ALL" ? state.playerList[0].id : Number(state.focus);
+      const active = getActivePlayerIdsAtFrame(state.frameIndex);
+      const defaultFocusId = active[0] || state.playerList[0].id;
+      const focusId = state.focus === "ALL" ? defaultFocusId : Number(state.focus);
+      const hideIfZero = new Set([
+        "highIntensityIntervals",
+        "sprintIntensity",
+        "timeInPossessionZone",
+        "zoneTimeMid",
+        "zoneTimeAtt",
+      ]);
+      let hiddenCount = 0;
+
       for (const m of selected) {
+        const raw = state.metricData[focusId]?.[m]?.[state.frameIndex] ?? 0;
+        if (hideIfZero.has(m) && Math.abs(raw) < 1e-9) {
+          hiddenCount += 1;
+          continue;
+        }
+
         const row = document.createElement("div");
         row.className = "read-row";
         const n = document.createElement("span");
         n.textContent = METRICS.find((x) => x.id === m)?.label || m;
         const v = document.createElement("strong");
-        const raw = state.metricData[focusId]?.[m]?.[state.frameIndex] ?? 0;
         v.textContent = raw.toFixed(3);
         row.append(n, v);
         ui.readBox.appendChild(row);
+      }
+
+      if (hiddenCount > 0) {
+        const note = document.createElement("div");
+        note.style.marginTop = "6px";
+        note.style.fontSize = "0.75rem";
+        note.style.color = "var(--muted)";
+        note.textContent = `${hiddenCount} zero-value contextual metrics hidden`;
+        ui.readBox.appendChild(note);
       }
 
       if (state.mode === "composite" || selected.length === METRICS.length) {
@@ -1600,12 +1640,18 @@
     }
 
     function renderHealth() {
+      const frame = state.frames[state.frameIndex] || null;
+      const activePlayers = frame
+        ? new Set(
+            (frame.player_data || [])
+              .filter((p) => state.playersById[p.player_id] && Number.isFinite(p.x) && Number.isFinite(p.y))
+              .map((p) => p.player_id)
+          ).size
+        : 0;
+
       const items = [
         `Frames: ${state.frames.length}`,
-        `Players: ${state.playerList.length}`,
-        `Selected metrics: ${state.selectedMetrics.size}`,
-        `Mode: ${state.mode}`,
-        `Frame aligned 10Hz: yes`,
+        `Active players on pitch: ${activePlayers}`,
       ];
       ui.healthBox.innerHTML = "";
       items.forEach((t) => {
@@ -1767,10 +1813,7 @@
       });
 
       ui.focusSel.value = state.focus;
-      if (!state.compareA && state.playerList[0]) state.compareA = String(state.playerList[0].id);
-      if (!state.compareB && state.playerList[1]) state.compareB = String(state.playerList[1].id);
-      ui.compareASel.value = state.compareA;
-      ui.compareBSel.value = state.compareB;
+      ensureComparativeSelection();
     }
 
     function getUserPresets() {
@@ -2095,22 +2138,16 @@
         state.homeTeamId = match.home_team?.id ?? null;
         state.awayTeamId = match.away_team?.id ?? null;
 
-        // Use kit color from match JSON if present; otherwise keep whatever the user has in the picker (don't override with defaults)
-        const currentHome = ui.homeTeamColor.value;
-        const currentAway = ui.awayTeamColor.value;
-        const matchHomeColor = match.home_team_kit?.jersey_color || (currentHome !== "#808080" ? currentHome : null);
-        const matchAwayColor = match.away_team_kit?.jersey_color || (currentAway !== "#808080" ? currentAway : null);
-        const distinct = ensureDistinctTeamColors(matchHomeColor || "#808080", matchAwayColor || "#808080");
+        // Keep team colors fully user-driven; do not auto-fill from match kit colors.
+        const currentHome = ui.homeTeamColor.value || "#808080";
+        const currentAway = ui.awayTeamColor.value || "#808080";
         state.teamColors = {
-          [state.homeTeamId]: distinct.home,
-          [state.awayTeamId]: distinct.away,
+          [state.homeTeamId]: currentHome,
+          [state.awayTeamId]: currentAway,
         };
 
         if (state.homeTeamId != null) ui.homeTeamLabel.textContent = `${match.home_team?.name || "Home team"}`;
         if (state.awayTeamId != null) ui.awayTeamLabel.textContent = `${match.away_team?.name || "Away team"}`;
-        // Only update picker if match JSON provided a color
-        if (match.home_team_kit?.jersey_color) ui.homeTeamColor.value = distinct.home;
-        if (match.away_team_kit?.jersey_color) ui.awayTeamColor.value = distinct.away;
         updateTeamColorIndicators();
 
         state.pitchImage = pitch;
@@ -2167,10 +2204,7 @@
 
       ui.modeSel.addEventListener("change", () => {
         state.mode = ui.modeSel.value;
-        render();
-      });
-      ui.comparisonVizMode.addEventListener("change", () => {
-        state.comparisonVizMode = ui.comparisonVizMode.value;
+        if (state.mode === "comparative") ensureComparativeSelection();
         render();
       });
       ui.focusSel.addEventListener("change", () => {
@@ -2200,22 +2234,16 @@
 
       ui.homeTeamColor.addEventListener("input", () => {
         if (state.homeTeamId == null) return;
-        const distinct = ensureDistinctTeamColors(ui.homeTeamColor.value, ui.awayTeamColor.value);
-        ui.homeTeamColor.value = distinct.home;
-        ui.awayTeamColor.value = distinct.away;
-        state.teamColors[state.homeTeamId] = distinct.home;
-        if (state.awayTeamId != null) state.teamColors[state.awayTeamId] = distinct.away;
+        state.teamColors[state.homeTeamId] = ui.homeTeamColor.value;
+        if (state.awayTeamId != null) state.teamColors[state.awayTeamId] = ui.awayTeamColor.value;
         updateTeamColorIndicators();
         render();
       });
 
       ui.awayTeamColor.addEventListener("input", () => {
         if (state.awayTeamId == null) return;
-        const distinct = ensureDistinctTeamColors(ui.homeTeamColor.value, ui.awayTeamColor.value);
-        ui.homeTeamColor.value = distinct.home;
-        ui.awayTeamColor.value = distinct.away;
-        if (state.homeTeamId != null) state.teamColors[state.homeTeamId] = distinct.home;
-        state.teamColors[state.awayTeamId] = distinct.away;
+        if (state.homeTeamId != null) state.teamColors[state.homeTeamId] = ui.homeTeamColor.value;
+        state.teamColors[state.awayTeamId] = ui.awayTeamColor.value;
         updateTeamColorIndicators();
         render();
       });
