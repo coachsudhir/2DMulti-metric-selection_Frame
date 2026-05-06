@@ -36,7 +36,7 @@
 
     .layout {
       display: grid;
-      grid-template-columns: 390px 1fr;
+      grid-template-columns: 340px 1fr;
       min-height: 100vh;
     }
 
@@ -303,10 +303,10 @@
         <div id="awayTeamColorValue" class="team-color-meta" style="color:var(--muted);">Click picker to choose color</div>
         <label class="field" style="margin-top:8px;">On-pitch metric labels
           <select id="pitchMetricLabelMode">
-            <option value="auto">Auto (all for focused player, first for all)</option>
+            <option value="auto">Auto (clean: focused player only)</option>
             <option value="all">All selected metrics for visible players</option>
             <option value="first">Only first selected metric</option>
-            <option value="off">Off</option>
+            <option value="off" selected>Off</option>
           </select>
         </label>
       </section>
@@ -538,7 +538,7 @@
       compareA: "",
       compareB: "",
       smoothWindow: 20,
-      pitchMetricLabelMode: "auto",
+      pitchMetricLabelMode: "off",
 
       homeTeamId: null,
       awayTeamId: null,
@@ -770,6 +770,7 @@
 
     function metricLabelText(playerId, selectedMetricIds, frameIndex, mode) {
       if (!selectedMetricIds.length || mode === "off") return [];
+      if (mode === "auto" && state.focus === "ALL") return [];
       const showAll = mode === "all" || (mode === "auto" && state.focus !== "ALL");
       const ids = showAll ? selectedMetricIds : [selectedMetricIds[0]];
 
@@ -1377,6 +1378,81 @@
       }
     }
 
+    function getTeamTerritoryColors() {
+      const home = state.teamColors[state.homeTeamId] || ui.homeTeamColor.value || "#4a90e2";
+      const away = state.teamColors[state.awayTeamId] || ui.awayTeamColor.value || "#ff6b6b";
+      const a = rgb(home);
+      const b = rgb(away);
+      const dist = Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2);
+      if (dist < 45) return { home: "#4a90e2", away: "#ff6b6b" };
+      return { home, away };
+    }
+
+    function drawTeamTerritory(frame, includePid, alpha = 0.15) {
+      const points = [];
+      const owners = [];
+      for (const p of frame.player_data || []) {
+        const pid = Number(p.player_id);
+        if (!includePid(pid)) continue;
+        if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+        const c = toCanvas(p.x, p.y);
+        points.push([c.x, c.y]);
+        owners.push(pid);
+      }
+      if (points.length < 3 || !window.d3?.Delaunay) return;
+
+      const { home, away } = getTeamTerritoryColors();
+      const delaunay = d3.Delaunay.from(points);
+      const vor = delaunay.voronoi([0, 0, ui.pitchCanvas.width, ui.pitchCanvas.height]);
+
+      for (let i = 0; i < points.length; i += 1) {
+        const poly = vor.cellPolygon(i);
+        if (!poly) continue;
+        const pid = owners[i];
+        const teamId = state.playersById[pid]?.teamId;
+        const fill = teamId === state.homeTeamId ? home : teamId === state.awayTeamId ? away : "#9e9e9e";
+        const c = rgb(fill);
+
+        pitchCtx.beginPath();
+        pitchCtx.moveTo(poly[0][0], poly[0][1]);
+        for (let k = 1; k < poly.length; k += 1) pitchCtx.lineTo(poly[k][0], poly[k][1]);
+        pitchCtx.closePath();
+        pitchCtx.fillStyle = `rgba(${c.r},${c.g},${c.b},${alpha})`;
+        pitchCtx.fill();
+      }
+    }
+
+    function drawTemporalTrails(frameIndex, includePid, metricId) {
+      const depth = 80;
+      const start = Math.max(1, frameIndex - depth + 1);
+
+      for (let fi = start; fi <= frameIndex; fi += 1) {
+        const frame = state.frames[fi];
+        const prev = state.frames[fi - 1];
+        if (!frame || !prev) continue;
+        const age = (fi - start + 1) / (frameIndex - start + 1 || 1);
+
+        for (const p of frame.player_data || []) {
+          const pid = Number(p.player_id);
+          if (!includePid(pid)) continue;
+          const q = (prev.player_data || []).find((x) => Number(x.player_id) === pid);
+          if (!q) continue;
+          if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(q.x) || !Number.isFinite(q.y)) continue;
+
+          const c1 = toCanvas(q.x, q.y);
+          const c2 = toCanvas(p.x, p.y);
+          const raw = state.metricData[pid]?.[metricId]?.[fi] ?? 0;
+          const n = norm(metricId, raw);
+          pitchCtx.beginPath();
+          pitchCtx.moveTo(c1.x, c1.y);
+          pitchCtx.lineTo(c2.x, c2.y);
+          pitchCtx.strokeStyle = `rgba(103,58,183,${0.06 + age * 0.24 + n * 0.12})`;
+          pitchCtx.lineWidth = 1 + n * 2;
+          pitchCtx.stroke();
+        }
+      }
+    }
+
     function drawPitch() {
       pitchCtx.clearRect(0, 0, ui.pitchCanvas.width, ui.pitchCanvas.height);
 
@@ -1416,12 +1492,20 @@
 
       drawZoneThirdsOverlay(mode);
 
+      if (selected.length > 0 && state.focus === "ALL" && (mode === "overlay" || mode === "composite")) {
+        drawTeamTerritory(frame, includePid, mode === "overlay" ? 0.12 : 0.16);
+      }
+
       if (selected.length >= 3 && mode === "overlay") {
         drawHeatComposite(frame, selected);
       }
 
       if (selected.length > 0 && mode !== "comparative") {
         drawCoverageLayer(mode, state.frameIndex, includePid);
+      }
+
+      if (mode === "temporal") {
+        drawTemporalTrails(state.frameIndex, includePid, selected[0] || "velocity");
       }
 
       if (selected.length > 0 && state.layerCfg.voronoi?.visible && mode !== "temporal") {
@@ -1478,10 +1562,17 @@
         pitchCtx.arc(c.x, c.y, 2.4, 0, Math.PI * 2);
         pitchCtx.fill();
 
-        pitchCtx.fillStyle = "#0f0f0f";
-        pitchCtx.font = "11px Manrope";
         const name = state.playersById[pid]?.name || String(pid);
-        pitchCtx.fillText(name.split(" ")[0], c.x + 11, c.y - 12);
+        const showName = mode === "comparative" || state.focus !== "ALL";
+        if (showName) {
+          pitchCtx.fillStyle = "#0f0f0f";
+          pitchCtx.font = "11px Manrope";
+          pitchCtx.fillText(name.split(" ")[0], c.x + 11, c.y - 12);
+        } else {
+          pitchCtx.fillStyle = "rgba(0,0,0,0.68)";
+          pitchCtx.font = "9px Manrope";
+          pitchCtx.fillText(name.charAt(0).toUpperCase(), c.x - 3, c.y - 12);
+        }
 
         const labelMode = mode === "comparative" ? "all" : state.pitchMetricLabelMode;
         const metricLines = metricLabelText(pid, selected, state.frameIndex, labelMode);
