@@ -222,6 +222,34 @@
       padding: 10px;
     }
 
+    .pitch-wrap {
+      position: relative;
+    }
+
+    .pitch-tooltip {
+      position: absolute;
+      pointer-events: none;
+      z-index: 20;
+      min-width: 240px;
+      max-width: 320px;
+      max-height: 260px;
+      overflow: auto;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,0.2);
+      background: rgba(255,255,255,0.96);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      font-size: 0.74rem;
+      color: #1e1e1e;
+      display: none;
+    }
+
+    .pitch-tooltip strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.8rem;
+    }
+
     canvas {
       width: 100%;
       border: 1px solid var(--line);
@@ -397,7 +425,10 @@
 
       <section class="canvas-card">
         <h3 style="margin:0 0 8px 0;">Pitch view (2D only)</h3>
-        <canvas id="pitchCanvas" width="1400" height="900"></canvas>
+        <div id="pitchWrap" class="pitch-wrap">
+          <canvas id="pitchCanvas" width="1400" height="900"></canvas>
+          <div id="pitchTooltip" class="pitch-tooltip"></div>
+        </div>
       </section>
 
       <section class="canvas-card">
@@ -507,7 +538,9 @@
       frameText: $("frameText"),
       timeText: $("timeText"),
 
+      pitchWrap: $("pitchWrap"),
       pitchCanvas: $("pitchCanvas"),
+      pitchTooltip: $("pitchTooltip"),
       readBox: $("readBox"),
       healthBox: $("healthBox"),
     };
@@ -539,6 +572,9 @@
       compareB: "",
       smoothWindow: 20,
       pitchMetricLabelMode: "off",
+
+      hoverPlayerId: null,
+      hoverPos: null,
 
       homeTeamId: null,
       awayTeamId: null,
@@ -1378,6 +1414,77 @@
       }
     }
 
+    function getPlayerDisplayName(pid) {
+      return state.playersById[pid]?.name || String(pid);
+    }
+
+    function updatePitchTooltip() {
+      const tip = ui.pitchTooltip;
+      if (!tip) return;
+
+      const pid = state.hoverPlayerId;
+      const pos = state.hoverPos;
+      if (!pid || !pos) {
+        tip.style.display = "none";
+        return;
+      }
+
+      const frameIndex = state.frameIndex;
+      const lines = METRICS.map((m) => {
+        const v = state.metricData[pid]?.[m.id]?.[frameIndex] ?? 0;
+        return `<div>${m.label}: <strong style="display:inline;margin:0;">${Number(v).toFixed(3)}</strong></div>`;
+      }).join("");
+
+      const comp = composite(pid, frameIndex).toFixed(3);
+      const team = state.playersById[pid]?.teamId;
+      tip.innerHTML = `<strong>${getPlayerDisplayName(pid)}</strong><div>Player ID: ${pid} | Team: ${team ?? "-"}</div><div>Frame: ${state.frames[frameIndex]?.frame ?? frameIndex}</div><div style="margin:4px 0 6px 0;">Composite Index: <strong style="display:inline;margin:0;">${comp}</strong></div>${lines}`;
+
+      const offset = 14;
+      tip.style.left = `${Math.min(pos.cssX + offset, pos.rectW - 330)}px`;
+      tip.style.top = `${Math.min(pos.cssY + offset, pos.rectH - 280)}px`;
+      tip.style.display = "block";
+    }
+
+    function updateHoverFromPointer(evt) {
+      const rect = ui.pitchCanvas.getBoundingClientRect();
+      const cssX = evt.clientX - rect.left;
+      const cssY = evt.clientY - rect.top;
+      const x = cssX * (ui.pitchCanvas.width / rect.width);
+      const y = cssY * (ui.pitchCanvas.height / rect.height);
+
+      const selected = [...state.selectedMetrics].filter((id) => state.layerCfg[id]?.visible !== false);
+      const mode = getEffectiveMode(selected);
+      const compareA = Number(state.compareA || 0);
+      const compareB = Number(state.compareB || 0);
+      const compareSet = new Set([String(compareA), String(compareB)]);
+      const includePid = (pid) => {
+        if (mode === "comparative") return compareSet.has(String(pid));
+        if (state.focus !== "ALL") return Number(state.focus) === Number(pid);
+        return true;
+      };
+
+      const frame = state.frames[state.frameIndex];
+      if (!frame) return;
+
+      let hit = null;
+      let bestDist = Infinity;
+      for (const p of frame.player_data || []) {
+        const pid = Number(p.player_id);
+        if (!includePid(pid)) continue;
+        if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+        const c = toCanvas(p.x, p.y);
+        const d = Math.hypot(c.x - x, c.y - y);
+        if (d < 16 && d < bestDist) {
+          bestDist = d;
+          hit = pid;
+        }
+      }
+
+      state.hoverPlayerId = hit;
+      state.hoverPos = { canvasX: x, canvasY: y, cssX, cssY, rectW: rect.width, rectH: rect.height };
+      updatePitchTooltip();
+    }
+
     function getTeamTerritoryColors() {
       const home = state.teamColors[state.homeTeamId] || ui.homeTeamColor.value || "#4a90e2";
       const away = state.teamColors[state.awayTeamId] || ui.awayTeamColor.value || "#ff6b6b";
@@ -1492,8 +1599,8 @@
 
       drawZoneThirdsOverlay(mode);
 
-      if (selected.length > 0 && state.focus === "ALL" && (mode === "overlay" || mode === "composite")) {
-        drawTeamTerritory(frame, includePid, mode === "overlay" ? 0.12 : 0.16);
+      if (selected.length > 0 && state.focus === "ALL" && mode !== "temporal") {
+        drawTeamTerritory(frame, (pid) => !!state.playersById[pid], mode === "comparative" ? 0.2 : mode === "overlay" ? 0.16 : 0.22);
       }
 
       if (selected.length >= 3 && mode === "overlay") {
@@ -1562,17 +1669,14 @@
         pitchCtx.arc(c.x, c.y, 2.4, 0, Math.PI * 2);
         pitchCtx.fill();
 
-        const name = state.playersById[pid]?.name || String(pid);
-        const showName = mode === "comparative" || state.focus !== "ALL";
-        if (showName) {
-          pitchCtx.fillStyle = "#0f0f0f";
-          pitchCtx.font = "11px Manrope";
-          pitchCtx.fillText(name.split(" ")[0], c.x + 11, c.y - 12);
-        } else {
-          pitchCtx.fillStyle = "rgba(0,0,0,0.68)";
-          pitchCtx.font = "9px Manrope";
-          pitchCtx.fillText(name.charAt(0).toUpperCase(), c.x - 3, c.y - 12);
-        }
+        const name = getPlayerDisplayName(pid);
+        const nameText = name.split(" ").slice(0, 2).join(" ");
+        pitchCtx.font = "11px Manrope";
+        const nameW = pitchCtx.measureText(nameText).width + 8;
+        pitchCtx.fillStyle = "rgba(255,255,255,0.88)";
+        pitchCtx.fillRect(c.x + 8, c.y - 22, nameW, 12);
+        pitchCtx.fillStyle = "#0f0f0f";
+        pitchCtx.fillText(nameText, c.x + 12, c.y - 12);
 
         const labelMode = mode === "comparative" ? "all" : state.pitchMetricLabelMode;
         const metricLines = metricLabelText(pid, selected, state.frameIndex, labelMode);
@@ -1601,6 +1705,8 @@
         pitchCtx.fill();
         pitchCtx.stroke();
       }
+
+      updatePitchTooltip();
     }
 
     function drawVoronoi(frame, metricId) {
@@ -2452,6 +2558,12 @@
       ui.pauseBtn.addEventListener("click", pause);
       ui.backBtn.addEventListener("click", () => step(-100));
       ui.fwdBtn.addEventListener("click", () => step(100));
+      ui.pitchCanvas.addEventListener("mousemove", updateHoverFromPointer);
+      ui.pitchCanvas.addEventListener("mouseleave", () => {
+        state.hoverPlayerId = null;
+        state.hoverPos = null;
+        updatePitchTooltip();
+      });
       ui.frameSlider.addEventListener("input", () => {
         state.frameIndex = Number(ui.frameSlider.value);
         render();
