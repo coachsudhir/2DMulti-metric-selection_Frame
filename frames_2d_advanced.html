@@ -1309,6 +1309,74 @@
       pitchCtx.stroke();
     }
 
+    function drawZoneThirdsOverlay(mode) {
+      const w = ui.pitchCanvas.width;
+      const h = ui.pitchCanvas.height;
+      const margin = 20;
+      const innerW = w - margin * 2;
+      const innerH = h - margin * 2;
+      const thirdW = innerW / 3;
+
+      let shades;
+      if (mode === "overlay") {
+        shades = ["rgba(30,136,229,0.08)", "rgba(255,255,255,0.03)", "rgba(251,140,0,0.08)"];
+      } else if (mode === "composite") {
+        shades = ["rgba(255,193,7,0.07)", "rgba(255,87,34,0.09)", "rgba(211,47,47,0.11)"];
+      } else if (mode === "temporal") {
+        shades = ["rgba(123,31,162,0.08)", "rgba(25,118,210,0.08)", "rgba(0,150,136,0.08)"];
+      } else {
+        return;
+      }
+
+      for (let i = 0; i < 3; i += 1) {
+        pitchCtx.fillStyle = shades[i];
+        pitchCtx.fillRect(margin + i * thirdW, margin, thirdW, innerH);
+      }
+    }
+
+    function drawCoverageLayer(mode, frameIndex, includePid) {
+      const windowFrames = mode === "temporal" ? 140 : mode === "composite" ? 180 : 90;
+      const step = 30;
+      const start = Math.max(0, frameIndex - windowFrames + 1);
+      const metricId = [...state.selectedMetrics][0] || "velocity";
+
+      for (let y = 0; y < ui.pitchCanvas.height; y += step) {
+        for (let x = 0; x < ui.pitchCanvas.width; x += step) {
+          let score = 0;
+          let wsum = 0;
+
+          for (let fi = start; fi <= frameIndex; fi += 1) {
+            const frame = state.frames[fi];
+            if (!frame) continue;
+            const tWeight = (fi - start + 1) / (frameIndex - start + 1 || 1);
+
+            for (const p of frame.player_data || []) {
+              const pid = Number(p.player_id);
+              if (!includePid(pid)) continue;
+              if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+
+              const c = toCanvas(p.x, p.y);
+              const d = Math.hypot(c.x - x, c.y - y);
+              if (d > 130) continue;
+
+              const raw = state.metricData[pid]?.[metricId]?.[fi] ?? 0;
+              const mWeight = 0.4 + 0.6 * norm(metricId, raw);
+              const inf = (1 - d / 130) * tWeight * mWeight;
+              score += inf;
+              wsum += tWeight;
+            }
+          }
+
+          if (!wsum) continue;
+          const n = Math.max(0, Math.min(1, score / wsum));
+          const alpha = mode === "temporal" ? 0.03 + n * 0.14 : mode === "composite" ? 0.04 + n * 0.18 : 0.03 + n * 0.12;
+          const color = mode === "temporal" ? `rgba(63,81,181,${alpha})` : mode === "composite" ? `rgba(198,40,40,${alpha})` : `rgba(0,150,136,${alpha})`;
+          pitchCtx.fillStyle = color;
+          pitchCtx.fillRect(x, y, step, step);
+        }
+      }
+    }
+
     function drawPitch() {
       pitchCtx.clearRect(0, 0, ui.pitchCanvas.width, ui.pitchCanvas.height);
 
@@ -1331,8 +1399,7 @@
       if (!frame) return;
 
       const selected = [...state.selectedMetrics].filter((id) => state.layerCfg[id]?.visible !== false);
-      const allSelected = selected.length === METRICS.length;
-      const mode = allSelected ? "composite" : state.mode;
+      const mode = getEffectiveMode(selected);
       if (mode === "comparative") {
         // Keep A/B anchored to players active in the current frame so comparative markers stay visible.
         ensureComparativeSelection();
@@ -1341,19 +1408,29 @@
       const compareB = Number(state.compareB || 0);
       const compareSet = new Set([String(compareA), String(compareB)]);
 
+      const includePid = (pid) => {
+        if (mode === "comparative") return compareSet.has(String(pid));
+        if (state.focus !== "ALL") return Number(state.focus) === Number(pid);
+        return true;
+      };
+
+      drawZoneThirdsOverlay(mode);
+
       if (selected.length >= 3 && mode === "overlay") {
         drawHeatComposite(frame, selected);
       }
 
-      if (selected.length > 0 && state.layerCfg.voronoi?.visible) {
+      if (selected.length > 0 && mode !== "comparative") {
+        drawCoverageLayer(mode, state.frameIndex, includePid);
+      }
+
+      if (selected.length > 0 && state.layerCfg.voronoi?.visible && mode !== "temporal") {
         drawVoronoi(frame, selected[0]);
       }
 
       for (const p of frame.player_data || []) {
         const pid = p.player_id;
-        if (mode === "comparative") {
-          if (!compareSet.has(String(pid))) continue;
-        } else if (state.focus !== "ALL" && Number(state.focus) !== pid) {
+        if (!includePid(pid)) {
           continue;
         }
 
@@ -1504,12 +1581,12 @@
 
     function updateModeControlState() {
       const comparative = state.mode === "comparative";
-      ui.compareASel.disabled = false;
-      ui.compareBSel.disabled = false;
-      ui.focusSel.disabled = false;
+      ui.compareASel.disabled = !comparative;
+      ui.compareBSel.disabled = !comparative;
+      ui.focusSel.disabled = comparative;
 
-      ui.compareASel.title = comparative ? "Comparison player A" : "Select to switch into comparative mode";
-      ui.compareBSel.title = comparative ? "Comparison player B" : "Select to switch into comparative mode";
+      ui.compareASel.title = comparative ? "Comparison player A" : "Available only in comparative mode";
+      ui.compareBSel.title = comparative ? "Comparison player B" : "Available only in comparative mode";
       ui.focusSel.title = comparative ? "Focus is ignored in comparative mode" : "Focused player in current mode";
     }
 
@@ -1549,12 +1626,44 @@
       ui.compareBSel.value = state.compareB;
     }
 
+    function getEffectiveMode(selectedMetricIds) {
+      const allSelected = selectedMetricIds.length === METRICS.length;
+      if (state.mode === "overlay" && allSelected) return "composite";
+      return state.mode;
+    }
+
+    function getVisiblePlayerIdsAtFrame(frameIndex, mode) {
+      const frame = state.frames[frameIndex];
+      if (!frame) return [];
+
+      const active = new Set(
+        (frame.player_data || [])
+          .filter((p) => state.playersById[p.player_id] && Number.isFinite(p.x) && Number.isFinite(p.y))
+          .map((p) => Number(p.player_id))
+      );
+
+      if (mode === "comparative") {
+        const a = Number(state.compareA || 0);
+        const b = Number(state.compareB || 0);
+        return [a, b].filter((pid, i, arr) => active.has(pid) && arr.indexOf(pid) === i);
+      }
+
+      if (state.focus !== "ALL") {
+        const f = Number(state.focus);
+        return active.has(f) ? [f] : [];
+      }
+
+      return [...active];
+    }
+
     function renderReadout() {
       ui.readBox.innerHTML = "";
       const selected = [...state.selectedMetrics];
       if (!selected.length || !state.playerList.length) return;
+      const mode = getEffectiveMode(selected);
 
-      if (state.mode === "comparative") {
+      if (mode === "comparative") {
+        ensureComparativeSelection();
         const metricId = selected[0] || "velocity";
         const a = Number(state.compareA || 0);
         const b = Number(state.compareB || 0);
@@ -1627,7 +1736,7 @@
         ui.readBox.appendChild(note);
       }
 
-      if (state.mode === "composite" || selected.length === METRICS.length) {
+      if (mode === "composite") {
         const row = document.createElement("div");
         row.className = "read-row";
         const n = document.createElement("span");
@@ -1640,14 +1749,9 @@
     }
 
     function renderHealth() {
-      const frame = state.frames[state.frameIndex] || null;
-      const activePlayers = frame
-        ? new Set(
-            (frame.player_data || [])
-              .filter((p) => state.playersById[p.player_id] && Number.isFinite(p.x) && Number.isFinite(p.y))
-              .map((p) => p.player_id)
-          ).size
-        : 0;
+      const selected = [...state.selectedMetrics].filter((id) => state.layerCfg[id]?.visible !== false);
+      const mode = getEffectiveMode(selected);
+      const activePlayers = getVisiblePlayerIdsAtFrame(state.frameIndex, mode).length;
 
       const items = [
         `Frames: ${state.frames.length}`,
