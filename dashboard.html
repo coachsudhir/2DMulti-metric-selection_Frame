@@ -289,10 +289,40 @@
     };
 
     let selectedScenario = scenarios[0];
+    const hostedDefaults = [
+      "2061307_match_data.json",
+      "2061307_tracking_extrapolated.jsonl",
+      "Football Pitch.png",
+    ];
 
     function setStatus(msg, cls = "") {
       els.status.textContent = msg;
       els.status.className = `status ${cls}`;
+    }
+
+    function makeLaunchToken() {
+      return `anselmo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    async function checkHostedDefaults() {
+      const checks = await Promise.all(
+        hostedDefaults.map(async (path) => {
+          try {
+            const res = await fetch(path, { method: "HEAD", cache: "no-store" });
+            return { path, ok: res.ok };
+          } catch {
+            return { path, ok: false };
+          }
+        })
+      );
+
+      const missing = checks.filter((c) => !c.ok).map((c) => c.path);
+      if (missing.length) {
+        els.launchDefaultsBtn.disabled = true;
+        setStatus(`Hosted sample files missing: ${missing.join(", ")}. Upload files to continue.`, "err");
+      } else {
+        els.launchDefaultsBtn.disabled = false;
+      }
     }
 
     function readFileAsText(file) {
@@ -342,6 +372,8 @@
       try {
         setStatus("Preparing upload bundle...", "");
 
+        const token = makeLaunchToken();
+
         const matchUrl = URL.createObjectURL(matchFile);
         const trackingUrl = URL.createObjectURL(trackingFile);
         const pitchUrl = pitchFile ? URL.createObjectURL(pitchFile) : null;
@@ -361,9 +393,11 @@
 
         sessionStorage.setItem("anselmoUploadBundle", JSON.stringify(bundle));
         sessionStorage.setItem("anselmoScenarioConfig", JSON.stringify(scenarioConfig));
+        localStorage.setItem(`anselmoUploadBundle:${token}`, JSON.stringify(bundle));
+        localStorage.setItem(`anselmoScenarioConfig:${token}`, JSON.stringify(scenarioConfig));
 
         setStatus("Opening 2D engine with uploaded scenario... Keep this tab open while engine loads large files.", "ok");
-        window.open("frames_2d_advanced.html?autoload=session", "_blank", "noopener");
+        window.open(`frames_2d_advanced.html?autoload=local&token=${encodeURIComponent(token)}`, "_blank", "noopener");
       } catch (err) {
         console.error(err);
         setStatus(`Failed to launch: ${err.message}`, "err");
@@ -371,6 +405,10 @@
     }
 
     function launchDefaults() {
+      if (els.launchDefaultsBtn.disabled) {
+        setStatus("Hosted defaults are unavailable. Please upload files and launch scenario.", "err");
+        return;
+      }
       sessionStorage.removeItem("anselmoUploadBundle");
       sessionStorage.removeItem("anselmoScenarioConfig");
       window.open("frames_2d_advanced.html", "_blank", "noopener");
@@ -383,6 +421,7 @@
 
     renderScenarioCards();
     bind();
+    checkHostedDefaults();
   </script>
 </body>
 </html>

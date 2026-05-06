@@ -1981,12 +1981,36 @@
       }
     }
 
+    function readLocalBundle(token) {
+      if (!token) return null;
+      try {
+        return JSON.parse(localStorage.getItem(`anselmoUploadBundle:${token}`) || "null");
+      } catch {
+        return null;
+      }
+    }
+
     function readSessionScenario() {
       try {
         return JSON.parse(sessionStorage.getItem("anselmoScenarioConfig") || "null");
       } catch {
         return null;
       }
+    }
+
+    function readLocalScenario(token) {
+      if (!token) return null;
+      try {
+        return JSON.parse(localStorage.getItem(`anselmoScenarioConfig:${token}`) || "null");
+      } catch {
+        return null;
+      }
+    }
+
+    function clearLocalLaunchPayload(token) {
+      if (!token) return;
+      localStorage.removeItem(`anselmoUploadBundle:${token}`);
+      localStorage.removeItem(`anselmoScenarioConfig:${token}`);
     }
 
     function applyScenario(config) {
@@ -2121,7 +2145,7 @@
         renderWeights();
         renderPresets();
 
-        const scenario = readSessionScenario();
+        const scenario = sourceBundle?.__scenario || readSessionScenario();
         applyScenario(scenario);
         renderMetricGroups();
         renderLayers();
@@ -2282,6 +2306,16 @@
         const bundle = readSessionBundle();
         if ((bundle?.match && bundle?.trackingText) || (bundle?.matchUrl && bundle?.trackingUrl)) {
           onLoad(bundle);
+        }
+      } else if (url.searchParams.get("autoload") === "local") {
+        const token = url.searchParams.get("token");
+        const bundle = readLocalBundle(token);
+        const scenario = readLocalScenario(token);
+        if ((bundle?.match && bundle?.trackingText) || (bundle?.matchUrl && bundle?.trackingUrl)) {
+          onLoad({ ...bundle, __scenario: scenario || null });
+          clearLocalLaunchPayload(token);
+        } else {
+          setStatus("Uploaded bundle not found. Please launch again from dashboard.", "err");
         }
       }
     }
