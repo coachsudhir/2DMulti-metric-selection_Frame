@@ -776,32 +776,80 @@
     function drawTeamLegendOnPitch() {
       if (state.homeTeamId == null && state.awayTeamId == null) return;
 
-      const homeName = ui.homeTeamLabel.textContent || "Home";
-      const awayName = ui.awayTeamLabel.textContent || "Away";
-      const homeColor = state.teamColors[state.homeTeamId] || ui.homeTeamColor.value;
-      const awayColor = state.teamColors[state.awayTeamId] || ui.awayTeamColor.value;
+      const frame = state.frames[state.frameIndex] || null;
+      const avgXByTeam = (teamId) => {
+        if (!frame || teamId == null) return null;
+        let sum = 0;
+        let count = 0;
+        for (const p of frame.player_data || []) {
+          const pid = Number(p.player_id);
+          if (!Number.isFinite(p.x) || !state.playersById[pid]) continue;
+          if (state.playersById[pid].teamId !== teamId) continue;
+          sum += p.x;
+          count += 1;
+        }
+        return count ? sum / count : null;
+      };
 
-      const x = 26;
+      const homeX = avgXByTeam(state.homeTeamId);
+      const awayX = avgXByTeam(state.awayTeamId);
+      const useDynamicSides = Number.isFinite(homeX) && Number.isFinite(awayX) && homeX !== awayX;
+      const leftTeamId = useDynamicSides
+        ? (homeX < awayX ? state.homeTeamId : state.awayTeamId)
+        : state.homeTeamId;
+      const rightTeamId = leftTeamId === state.homeTeamId ? state.awayTeamId : state.homeTeamId;
+
+      const teamName = (teamId) => {
+        if (teamId === state.homeTeamId) return ui.homeTeamLabel.textContent || "Home";
+        if (teamId === state.awayTeamId) return ui.awayTeamLabel.textContent || "Away";
+        return "Team";
+      };
+      const teamColor = (teamId) => {
+        if (teamId == null) return "#666";
+        return state.teamColors[teamId]
+          || (teamId === state.homeTeamId ? ui.homeTeamColor.value : ui.awayTeamColor.value)
+          || "#666";
+      };
+
+      const leftName = teamName(leftTeamId);
+      const rightName = teamName(rightTeamId);
+      const leftColor = teamColor(leftTeamId);
+      const rightColor = teamColor(rightTeamId);
+
+      pitchCtx.font = "12px Manrope";
+      const leftText = `${leftName}`;
+      const rightText = `${rightName}`;
+
+      const padX = 10;
+      const boxH = 24;
       const y = 24;
-      const w = 250;
-      const h = 58;
 
-      pitchCtx.fillStyle = "rgba(255,255,255,0.88)";
-      pitchCtx.fillRect(x, y, w, h);
+      const leftW = Math.max(120, pitchCtx.measureText(leftText).width + 36);
+      const rightW = Math.max(120, pitchCtx.measureText(rightText).width + 36);
+
+      const leftX = 26;
+      const rightX = ui.pitchCanvas.width - rightW - 26;
+
+      // Left zone header (home team).
+      pitchCtx.fillStyle = "rgba(255,255,255,0.9)";
+      pitchCtx.fillRect(leftX, y, leftW, boxH);
       pitchCtx.strokeStyle = "rgba(20,20,20,0.25)";
       pitchCtx.lineWidth = 1;
-      pitchCtx.strokeRect(x, y, w, h);
-
-      pitchCtx.fillStyle = homeColor;
-      pitchCtx.fillRect(x + 10, y + 12, 16, 16);
+      pitchCtx.strokeRect(leftX, y, leftW, boxH);
+      pitchCtx.fillStyle = leftColor;
+      pitchCtx.fillRect(leftX + 8, y + 6, 12, 12);
       pitchCtx.fillStyle = "#111";
-      pitchCtx.font = "12px Manrope";
-      pitchCtx.fillText(`${homeName} (${homeColor})`, x + 32, y + 24);
+      pitchCtx.fillText(leftText, leftX + padX + 14, y + 16);
 
-      pitchCtx.fillStyle = awayColor;
-      pitchCtx.fillRect(x + 10, y + 34, 16, 16);
+      // Right zone header (away team).
+      pitchCtx.fillStyle = "rgba(255,255,255,0.9)";
+      pitchCtx.fillRect(rightX, y, rightW, boxH);
+      pitchCtx.strokeStyle = "rgba(20,20,20,0.25)";
+      pitchCtx.strokeRect(rightX, y, rightW, boxH);
+      pitchCtx.fillStyle = rightColor;
+      pitchCtx.fillRect(rightX + 8, y + 6, 12, 12);
       pitchCtx.fillStyle = "#111";
-      pitchCtx.fillText(`${awayName} (${awayColor})`, x + 32, y + 46);
+      pitchCtx.fillText(rightText, rightX + padX + 14, y + 16);
     }
 
     function metricLabelText(playerId, selectedMetricIds, frameIndex, mode) {
@@ -1406,8 +1454,12 @@
 
           if (!wsum) continue;
           const n = Math.max(0, Math.min(1, score / wsum));
-          const alpha = mode === "temporal" ? 0.03 + n * 0.14 : mode === "composite" ? 0.04 + n * 0.18 : 0.03 + n * 0.12;
-          const color = mode === "temporal" ? `rgba(63,81,181,${alpha})` : mode === "composite" ? `rgba(198,40,40,${alpha})` : `rgba(0,150,136,${alpha})`;
+          const alpha = mode === "temporal" ? 0.03 + n * 0.14 : mode === "composite" ? 0.04 + n * 0.18 : 0.02 + n * 0.08;
+          const color = mode === "temporal"
+            ? `rgba(63,81,181,${alpha})`
+            : mode === "composite"
+              ? `rgba(198,40,40,${alpha})`
+              : `rgba(255,255,255,${alpha})`;
           pitchCtx.fillStyle = color;
           pitchCtx.fillRect(x, y, step, step);
         }
@@ -1526,6 +1578,11 @@
         pitchCtx.closePath();
         pitchCtx.fillStyle = `rgba(${c.r},${c.g},${c.b},${alpha})`;
         pitchCtx.fill();
+
+        // Subtle edge in the same team color helps separate adjacent cells without adding noise.
+        pitchCtx.strokeStyle = `rgba(${c.r},${c.g},${c.b},0.18)`;
+        pitchCtx.lineWidth = 1;
+        pitchCtx.stroke();
       }
     }
 
@@ -1600,14 +1657,18 @@
       drawZoneThirdsOverlay(mode);
 
       if (selected.length > 0 && state.focus === "ALL" && mode !== "temporal") {
-        drawTeamTerritory(frame, (pid) => !!state.playersById[pid], mode === "comparative" ? 0.2 : mode === "overlay" ? 0.16 : 0.22);
+        drawTeamTerritory(frame, (pid) => !!state.playersById[pid], mode === "comparative" ? 0.18 : mode === "overlay" ? 0.2 : 0.24);
       }
 
       if (selected.length >= 3 && mode === "overlay") {
         drawHeatComposite(frame, selected);
       }
 
-      if (selected.length > 0 && mode !== "comparative") {
+      // In dense overlay view, coverage + heat + territory together becomes muddy.
+      // Keep coverage for focused or non-overlay analysis where it adds clarity.
+      const denseAllPlayers = state.focus === "ALL" && getVisiblePlayerIdsAtFrame(state.frameIndex, mode).length > 12;
+      const allowCoverage = selected.length > 0 && mode !== "comparative" && !(mode === "overlay" && denseAllPlayers);
+      if (allowCoverage) {
         drawCoverageLayer(mode, state.frameIndex, includePid);
       }
 
@@ -1678,7 +1739,10 @@
         pitchCtx.fillStyle = "#0f0f0f";
         pitchCtx.fillText(nameText, c.x + 12, c.y - 12);
 
-        const labelMode = mode === "comparative" ? "all" : state.pitchMetricLabelMode;
+        const tooManyVisible = getVisiblePlayerIdsAtFrame(state.frameIndex, mode).length > 12;
+        const labelMode = mode === "comparative"
+          ? "all"
+          : (tooManyVisible && state.pitchMetricLabelMode === "all" ? "first" : state.pitchMetricLabelMode);
         const metricLines = metricLabelText(pid, selected, state.frameIndex, labelMode);
         metricLines.forEach((line, idx) => {
           const y = c.y + 14 + idx * 12;
