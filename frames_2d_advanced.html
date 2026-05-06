@@ -1,0 +1,2292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2D Advanced Tracking Analytics Engine</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-delaunay@6.0.4/dist/d3-delaunay.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #ece9df;
+      --panel: #fffef9;
+      --panel-2: #f8f4e8;
+      --ink: #211f1a;
+      --muted: #666052;
+      --line: #d8cfbc;
+      --ok: #1b7f62;
+      --warn: #bc3908;
+      --brand: #0d6e54;
+      --shadow: 0 10px 30px rgba(25, 23, 18, 0.09);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Manrope, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 10% 5%, #fff8dd 0%, #ece9df 44%, #e3dfd0 100%);
+      color: var(--ink);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 390px 1fr;
+      min-height: 100vh;
+    }
+
+    .left {
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff8e8 0%, #f2ecde 100%);
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .right {
+      padding: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.3rem;
+      letter-spacing: 0.01em;
+    }
+
+    .sub {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .panel {
+      margin-top: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 12px;
+    }
+
+    .panel h2 {
+      margin: 0 0 8px 0;
+      font-size: 0.95rem;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    input,
+    select,
+    button {
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 8px 10px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(180deg, #fff 0%, #f6f1e6 100%);
+    }
+
+    button:hover { border-color: var(--brand); }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .status {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--warn); }
+
+    .metric-group {
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-2);
+      padding: 8px;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: 16px 1fr;
+      gap: 8px;
+      align-items: center;
+      font-size: 0.82rem;
+      margin-top: 4px;
+    }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 10px 14px;
+    }
+    .transport-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 4px 8px;
+    }
+    .transport-group .divider {
+      width: 1px;
+      height: 22px;
+      background: var(--line);
+      margin: 0 4px;
+    }
+    .btn-major {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      min-width: 58px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 10px;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn-major:hover { opacity: .85; }
+    .btn-minor {
+      font-size: 0.74rem;
+      min-width: 50px;
+      background: rgba(255,255,255,0.1);
+      color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 5px 8px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-minor:hover { background: rgba(255,255,255,0.2); }
+    .btn-play {
+      font-size: 0.78rem;
+      font-weight: 700;
+      min-width: 52px;
+      background: #27ae60;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 12px;
+      cursor: pointer;
+    }
+    .btn-play:hover { background: #219a52; }
+    .btn-pause {
+      font-size: 0.78rem;
+      font-weight: 700;
+      min-width: 52px;
+      background: #c0392b;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 12px;
+      cursor: pointer;
+    }
+    .btn-pause:hover { background: #a93226; }
+
+    .canvas-card {
+      margin-top: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 10px;
+    }
+
+    canvas {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #2f8f46;
+    }
+
+    .info-grid {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .info {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 10px;
+      font-size: 0.82rem;
+    }
+
+    .layer-row, .weight-row, .read-row {
+      display: grid;
+      gap: 8px;
+      align-items: center;
+      margin-top: 6px;
+    }
+
+    .layer-row { grid-template-columns: 1fr 80px 24px; }
+    .weight-row { grid-template-columns: 1fr 1fr; }
+    .read-row { grid-template-columns: 1fr 1fr; }
+    .team-color-row { display: grid; grid-template-columns: 1fr 70px; gap: 8px; align-items: center; margin-top: 6px; }
+    .team-color-meta { font-size: 0.76rem; color: var(--muted); margin-top: 2px; }
+    .compare-head { margin-top: 10px; font-weight: 700; font-size: 0.82rem; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 6px; font-size: 0.78rem; }
+    .mode-sep { margin: 8px 0 4px 0; font-weight: 700; font-size: 0.8rem; color: #3a352b; }
+
+    @media (max-width: 1200px) {
+      .layout { grid-template-columns: 1fr; }
+      .left { border-right: 0; border-bottom: 1px solid var(--line); }
+      .info-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="left">
+      <h1>2D Analytics Engine</h1>
+      <div class="sub">Multi-metric selection, composite intelligence, tactical exports</div>
+
+      <section class="panel">
+        <h2>Dataset</h2>
+        <label class="field">Upload Match JSON
+          <input id="matchFile" type="file" accept=".json,application/json" />
+        </label>
+        <label class="field">Upload Tracking JSONL
+          <input id="trackingFile" type="file" accept=".jsonl,.txt,application/json" />
+        </label>
+        <label class="field">Upload Pitch image
+          <input id="pitchFile" type="file" accept="image/png,image/jpeg,image/webp" />
+        </label>
+        <label class="field">Match JSON
+          <input id="matchPath" value="2061307_match_data.json" />
+        </label>
+        <label class="field">Tracking JSONL
+          <input id="trackingPath" value="2061307_tracking_extrapolated.jsonl" />
+        </label>
+        <label class="field">Pitch image
+          <input id="pitchPath" value="Football Pitch.png" />
+        </label>
+        <button id="loadBtn">Load + Compute</button>
+        <div id="loadStatus" class="status">Idle</div>
+      </section>
+
+      <section class="panel">
+        <h2>Team colors</h2>
+        <div class="team-color-row">
+          <label id="homeTeamLabel">Home team</label>
+          <input id="homeTeamColor" type="color" value="#808080" />
+        </div>
+        <div id="homeTeamColorValue" class="team-color-meta" style="color:var(--muted);">Click picker to choose color</div>
+        <div class="team-color-row">
+          <label id="awayTeamLabel">Away team</label>
+          <input id="awayTeamColor" type="color" value="#808080" />
+        </div>
+        <div id="awayTeamColorValue" class="team-color-meta" style="color:var(--muted);">Click picker to choose color</div>
+        <label class="field" style="margin-top:8px;">On-pitch metric labels
+          <select id="pitchMetricLabelMode">
+            <option value="auto">Auto (all for focused player, first for all)</option>
+            <option value="all">All selected metrics for visible players</option>
+            <option value="first">Only first selected metric</option>
+            <option value="off">Off</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="panel">
+        <h2>Metrics Panel</h2>
+        <input id="metricSearch" placeholder="Search metric" />
+        <div class="row" style="margin-top:8px;">
+          <button id="selectAllBtn">Select all</button>
+          <button id="clearBtn">Clear</button>
+        </div>
+        <div id="metricGroups"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Modes</h2>
+        <label class="field">Visualization
+          <select id="modeSel">
+            <option value="overlay">Overlay mode</option>
+            <option value="composite">Composite index mode</option>
+            <option value="comparative">Comparative mode</option>
+            <option value="temporal">Temporal evolution mode</option>
+          </select>
+        </label>
+        <label class="field">Comparative glyph
+          <select id="comparisonVizMode">
+            <option value="splitHalo">Split halo (recommended)</option>
+            <option value="deltaDisc">Delta disc</option>
+          </select>
+        </label>
+
+        <div class="mode-sep">Player focus (single-player analysis)</div>
+        <label class="field">Player focus
+          <select id="focusSel"></select>
+        </label>
+
+        <div class="mode-sep">Player comparison (A vs B only)</div>
+        <label class="field">Compare Player A
+          <select id="compareASel"></select>
+        </label>
+        <label class="field">Compare Player B
+          <select id="compareBSel"></select>
+        </label>
+        <label class="field">Rolling window (frames)
+          <input id="smoothWin" type="number" min="1" max="300" value="20" />
+        </label>
+      </section>
+
+      <section class="panel">
+        <h2>Layer controls</h2>
+        <div id="layerBox"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Composite weights</h2>
+        <div id="weightBox"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Presets</h2>
+        <label class="field">Preset
+          <select id="presetSel"></select>
+        </label>
+        <div class="row">
+          <button id="savePresetBtn">Save current</button>
+          <button id="exportPresetBtn">Export JSON</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Export</h2>
+        <div class="row">
+          <button id="csvBtn">CSV</button>
+          <button id="xlsxBtn">XLSX</button>
+          <button id="jsonBtn">JSON bundle</button>
+          <button id="pdfBtn">Match report PDF</button>
+          <button id="heatBtn">Heatmap PNG</button>
+        </div>
+      </section>
+    </aside>
+
+    <main class="right">
+      <section class="topbar">
+        <div class="transport-group">
+          <button id="back10Btn" class="btn-major" title="Jump back 10 seconds">⏮ -10s</button>
+          <button id="backBtn" class="btn-minor" title="Step back 0.1 seconds">◀ 0.1s</button>
+          <div class="divider"></div>
+          <button id="playBtn" class="btn-play">▶ Play</button>
+          <button id="pauseBtn" class="btn-pause">⏸ Pause</button>
+          <div class="divider"></div>
+          <button id="fwdBtn" class="btn-minor" title="Step forward 0.1 seconds">0.1s ▶</button>
+          <button id="fwd10Btn" class="btn-major" title="Jump forward 10 seconds">+10s ⏭</button>
+        </div>
+        <label style="margin-left:8px;">Frame <input id="frameSlider" type="range" min="0" max="0" value="0" style="width:260px;vertical-align:middle;" /></label>
+        <span id="frameText" style="font-size:0.8rem;">Frame: 0</span>
+        <span id="timeText" style="font-size:0.8rem;color:var(--accent);">Time: 00:00.00</span>
+      </section>
+
+      <section class="canvas-card">
+        <h3 style="margin:0 0 8px 0;">Pitch view (2D only)</h3>
+        <canvas id="pitchCanvas" width="1400" height="900"></canvas>
+      </section>
+
+      <section class="canvas-card">
+      <section class="info-grid">
+        <article class="info">
+          <strong>Current metrics</strong>
+          <div id="readBox"></div>
+        </article>
+        <article class="info">
+          <strong>Engine health</strong>
+          <ul id="healthBox"></ul>
+        </article>
+
+      </section>
+    </main>
+  </div>
+
+  <script type="module">
+    const FRAME_DT = 0.1;
+    const ACTIVE_SPEED = 1.2;
+    const SPRINT_SPEED = 7.0;
+    const HI_SPEED = 5.5;
+    const HI_ACCEL = 1.3;
+
+    const METRICS = [
+      { id: "velocity", label: "Velocity", group: "physical", color: "#2a9d8f" },
+      { id: "acceleration", label: "Acceleration", group: "physical", color: "#e76f51" },
+      { id: "deceleration", label: "Deceleration", group: "physical", color: "#9a031e" },
+      { id: "deltaAngle", label: "Delta Angle", group: "physical", color: "#fb8500" },
+      { id: "distanceCovered", label: "Distance Covered", group: "physical", color: "#023047" },
+      { id: "sprintIntensity", label: "Sprint Intensity", group: "physical", color: "#ff006e" },
+      { id: "fatigueIndex", label: "Fatigue Index", group: "physical", color: "#6a4c93" },
+      { id: "workRatePerMinute", label: "Work Rate per Minute", group: "physical", color: "#560bad" },
+      { id: "highIntensityIntervals", label: "High-Intensity Interval Count", group: "physical", color: "#ef476f" },
+
+      { id: "pitchCoverageArea", label: "Pitch Coverage Area", group: "spatial", color: "#1d3557" },
+      { id: "heatmapDensityScore", label: "Heatmap Density Score", group: "spatial", color: "#264653" },
+      { id: "positionalStabilityIndex", label: "Positional Stability Index", group: "spatial", color: "#219ebc" },
+      { id: "averagePositionDrift", label: "Average Position Drift", group: "spatial", color: "#8ecae6" },
+
+      { id: "timeOnPitch", label: "Time on Pitch", group: "temporal", color: "#4cc9f0" },
+      { id: "activeTime", label: "Active Time", group: "temporal", color: "#43aa8b" },
+      { id: "idleTimeRatio", label: "Idle Time Ratio", group: "temporal", color: "#f8961e" },
+      { id: "timeInPossessionZone", label: "Time in Possession Zone", group: "temporal", color: "#277da1" },
+      { id: "zoneTimeDef", label: "Zone Time Defensive Third", group: "temporal", color: "#adb5bd" },
+      { id: "zoneTimeMid", label: "Zone Time Mid Third", group: "temporal", color: "#6c757d" },
+      { id: "zoneTimeAtt", label: "Zone Time Attacking Third", group: "temporal", color: "#343a40" },
+
+      { id: "pressingIntensityIndex", label: "Pressing Intensity Index", group: "tactical", color: "#d62828" },
+      { id: "distanceNearestOpponent", label: "Distance to Nearest Opponent", group: "tactical", color: "#f77f00" },
+      { id: "teamCompactnessScore", label: "Team Compactness Score", group: "tactical", color: "#003049" },
+      { id: "transitionSpeed", label: "Transition Speed", group: "tactical", color: "#588157" },
+      { id: "heatIntensityScore", label: "Heat Intensity Score", group: "tactical", color: "#b5179e" },
+    ];
+
+    const PRESETS = {
+      "Speed Analysis": ["velocity", "acceleration", "deceleration", "sprintIntensity"],
+      "Fatigue Monitoring": ["fatigueIndex", "workRatePerMinute", "highIntensityIntervals", "idleTimeRatio"],
+      "Tactical Positioning": ["teamCompactnessScore", "distanceNearestOpponent", "transitionSpeed", "positionalStabilityIndex"],
+      "Full Performance Scan": METRICS.map((m) => m.id),
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    const ui = {
+      matchPath: $("matchPath"),
+      trackingPath: $("trackingPath"),
+      pitchPath: $("pitchPath"),
+      matchFile: $("matchFile"),
+      trackingFile: $("trackingFile"),
+      pitchFile: $("pitchFile"),
+      loadBtn: $("loadBtn"),
+      loadStatus: $("loadStatus"),
+
+      metricSearch: $("metricSearch"),
+      selectAllBtn: $("selectAllBtn"),
+      clearBtn: $("clearBtn"),
+      metricGroups: $("metricGroups"),
+
+      modeSel: $("modeSel"),
+      comparisonVizMode: $("comparisonVizMode"),
+      focusSel: $("focusSel"),
+      compareASel: $("compareASel"),
+      compareBSel: $("compareBSel"),
+      smoothWin: $("smoothWin"),
+      homeTeamColor: $("homeTeamColor"),
+      awayTeamColor: $("awayTeamColor"),
+      homeTeamLabel: $("homeTeamLabel"),
+      awayTeamLabel: $("awayTeamLabel"),
+      homeTeamColorValue: $("homeTeamColorValue"),
+      awayTeamColorValue: $("awayTeamColorValue"),
+      pitchMetricLabelMode: $("pitchMetricLabelMode"),
+
+      layerBox: $("layerBox"),
+      weightBox: $("weightBox"),
+      presetSel: $("presetSel"),
+      savePresetBtn: $("savePresetBtn"),
+      exportPresetBtn: $("exportPresetBtn"),
+
+      csvBtn: $("csvBtn"),
+      xlsxBtn: $("xlsxBtn"),
+      jsonBtn: $("jsonBtn"),
+      pdfBtn: $("pdfBtn"),
+      heatBtn: $("heatBtn"),
+
+      playBtn: $("playBtn"),
+      pauseBtn: $("pauseBtn"),
+      back10Btn: $("back10Btn"),
+      backBtn: $("backBtn"),
+      fwdBtn: $("fwdBtn"),
+      fwd10Btn: $("fwd10Btn"),
+      frameSlider: $("frameSlider"),
+      frameText: $("frameText"),
+      timeText: $("timeText"),
+
+      pitchCanvas: $("pitchCanvas"),
+      readBox: $("readBox"),
+      healthBox: $("healthBox"),
+    };
+
+    const pitchCtx = ui.pitchCanvas.getContext("2d");
+
+    const state = {
+      match: null,
+      frames: [],
+      playersById: {},
+      playerList: [],
+      pitchImage: null,
+      pitchLength: 105,
+      pitchWidth: 68,
+
+      frameIndex: 0,
+      playing: false,
+      playTimer: null,
+
+      selectedMetrics: new Set(["velocity"]),
+      layerCfg: {},
+      weights: {},
+      metricData: {},
+      normalizers: {},
+
+      mode: "overlay",
+      comparisonVizMode: "splitHalo",
+      focus: "ALL",
+      compareA: "",
+      compareB: "",
+      smoothWindow: 20,
+      pitchMetricLabelMode: "auto",
+
+      homeTeamId: null,
+      awayTeamId: null,
+      teamColors: {},
+
+      workerReady: false,
+    };
+
+    function setStatus(msg, cls = "") {
+      ui.loadStatus.textContent = msg;
+      ui.loadStatus.className = `status ${cls}`;
+    }
+
+    function clockText(frame) {
+      const t = frame * FRAME_DT;
+      const m = Math.floor(t / 60);
+      const s = Math.floor(t % 60);
+      const hs = Math.floor((t % 1) * 100);
+      return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(hs).padStart(2, "0")}`;
+    }
+
+    function parseJSONLText(text) {
+      return text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+    }
+
+    async function loadJSON(path) {
+      const r = await fetch(path);
+      if (!r.ok) throw new Error(`Cannot load ${path}`);
+      return r.json();
+    }
+
+    async function loadJSONL(path) {
+      const r = await fetch(path);
+      if (!r.ok) throw new Error(`Cannot load ${path}`);
+      const t = await r.text();
+      return parseJSONLText(t);
+    }
+
+    async function loadJSONLChunked(path, onProgress) {
+      const r = await fetch(path);
+      if (!r.ok) throw new Error(`Cannot load ${path}`);
+
+      const totalBytes = Number(r.headers.get("content-length")) || 0;
+      if (!r.body || !r.body.getReader) {
+        const t = await r.text();
+        const rows = parseJSONLText(t);
+        if (onProgress) {
+          onProgress({ bytes: t.length, totalBytes, rows: rows.length, done: true });
+        }
+        return rows;
+      }
+
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let bytes = 0;
+      let rows = 0;
+      const out = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        bytes += value.byteLength;
+        buffer += decoder.decode(value, { stream: true });
+
+        let idx = buffer.indexOf("\n");
+        while (idx >= 0) {
+          const line = buffer.slice(0, idx).trim();
+          buffer = buffer.slice(idx + 1);
+          if (line) {
+            out.push(JSON.parse(line));
+            rows += 1;
+          }
+          idx = buffer.indexOf("\n");
+        }
+
+        if (onProgress) {
+          onProgress({ bytes, totalBytes, rows, done: false });
+        }
+      }
+
+      const tail = buffer.trim();
+      if (tail) {
+        out.push(JSON.parse(tail));
+        rows += 1;
+      }
+
+      if (onProgress) {
+        onProgress({ bytes, totalBytes, rows, done: true });
+      }
+
+      return out;
+    }
+
+    async function loadImage(path) {
+      return new Promise((resolve) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => resolve(null);
+        i.src = path;
+      });
+    }
+
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error(`Cannot read ${file.name}`));
+        reader.readAsText(file);
+      });
+    }
+
+    function readFileAsDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error(`Cannot read ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function normalizeFrames(frames) {
+      const rows = frames.filter((f) => Number.isFinite(f.frame));
+      rows.sort((a, b) => a.frame - b.frame);
+      return rows;
+    }
+
+    function initPlayers(match) {
+      const players = {};
+      for (const p of match.players || []) {
+        players[p.id] = {
+          id: p.id,
+          teamId: p.team_id,
+          trackable: p.trackable_object,
+          name: p.short_name || `${p.first_name || ""} ${p.last_name || ""}`.trim() || String(p.id),
+        };
+      }
+      return players;
+    }
+
+    function mapTrackableToPlayer(playersById) {
+      const map = {};
+      Object.values(playersById).forEach((p) => {
+        map[p.trackable] = p.id;
+      });
+      return map;
+    }
+
+    function remapTrackingPlayerIds(frames, trackableMap) {
+      return frames.map((f) => ({
+        ...f,
+        player_data: (f.player_data || [])
+          .map((p) => ({ ...p, player_id: trackableMap[p.player_id] || p.player_id }))
+          .filter((p) => !!p.player_id),
+      }));
+    }
+
+    function rgb(hex) {
+      const s = hex.replace("#", "");
+      if (s.length !== 6) return { r: 42, g: 157, b: 143 };
+      const v = parseInt(s, 16);
+      return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+    }
+
+    function colorFor(metricId, vNorm, alpha = 0.75) {
+      const cHex = METRICS.find((m) => m.id === metricId)?.color || "#2a9d8f";
+      const c = rgb(cHex);
+      const mix = 0.15 + 0.85 * Math.max(0, Math.min(1, vNorm));
+      return `rgba(${Math.round(c.r * mix)},${Math.round(c.g * mix)},${Math.round(c.b * mix)},${alpha})`;
+    }
+
+    function toCanvas(x, y) {
+      const px = ((x + state.pitchLength / 2) / state.pitchLength) * ui.pitchCanvas.width;
+      const py = ((state.pitchWidth / 2 - y) / state.pitchWidth) * ui.pitchCanvas.height;
+      return { x: px, y: py };
+    }
+
+    function ensureDistinctTeamColors(homeHex, awayHex) {
+      const a = rgb(homeHex);
+      const b = rgb(awayHex);
+      const dist = Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2);
+      if (dist >= 80) return { home: homeHex, away: awayHex };
+      return { home: homeHex, away: "#d62728" };
+    }
+
+    function teamColorByPlayer(playerId) {
+      const teamId = state.playersById[playerId]?.teamId;
+      return state.teamColors[teamId] || "#3a3a3a";
+    }
+
+    function updateTeamColorIndicators() {
+      const home = ui.homeTeamColor.value.toLowerCase();
+      const away = ui.awayTeamColor.value.toLowerCase();
+      const isHomeSet = home !== "#808080" && home !== "";
+      const isAwaySet = away !== "#808080" && away !== "";
+      ui.homeTeamColorValue.textContent = isHomeSet ? home : "Click picker to choose color";
+      ui.awayTeamColorValue.textContent = isAwaySet ? away : "Click picker to choose color";
+      ui.homeTeamColorValue.style.color = isHomeSet ? home : "var(--muted)";
+      ui.awayTeamColorValue.style.color = isAwaySet ? away : "var(--muted)";
+    }
+
+    function drawTeamLegendOnPitch() {
+      if (state.homeTeamId == null && state.awayTeamId == null) return;
+
+      const homeName = ui.homeTeamLabel.textContent || "Home";
+      const awayName = ui.awayTeamLabel.textContent || "Away";
+      const homeColor = state.teamColors[state.homeTeamId] || ui.homeTeamColor.value;
+      const awayColor = state.teamColors[state.awayTeamId] || ui.awayTeamColor.value;
+
+      const x = 26;
+      const y = 24;
+      const w = 250;
+      const h = 58;
+
+      pitchCtx.fillStyle = "rgba(255,255,255,0.88)";
+      pitchCtx.fillRect(x, y, w, h);
+      pitchCtx.strokeStyle = "rgba(20,20,20,0.25)";
+      pitchCtx.lineWidth = 1;
+      pitchCtx.strokeRect(x, y, w, h);
+
+      pitchCtx.fillStyle = homeColor;
+      pitchCtx.fillRect(x + 10, y + 12, 16, 16);
+      pitchCtx.fillStyle = "#111";
+      pitchCtx.font = "12px Manrope";
+      pitchCtx.fillText(`${homeName} (${homeColor})`, x + 32, y + 24);
+
+      pitchCtx.fillStyle = awayColor;
+      pitchCtx.fillRect(x + 10, y + 34, 16, 16);
+      pitchCtx.fillStyle = "#111";
+      pitchCtx.fillText(`${awayName} (${awayColor})`, x + 32, y + 46);
+    }
+
+    function metricLabelText(playerId, selectedMetricIds, frameIndex, mode) {
+      if (!selectedMetricIds.length || mode === "off") return [];
+      const showAll = mode === "all" || (mode === "auto" && state.focus !== "ALL");
+      const ids = showAll ? selectedMetricIds : [selectedMetricIds[0]];
+
+      return ids.map((mId) => {
+        const short = METRICS.find((m) => m.id === mId)?.label || mId;
+        const raw = state.metricData[playerId]?.[mId]?.[frameIndex] ?? 0;
+        return `${short}: ${raw.toFixed(2)}`;
+      });
+    }
+
+    function drawCompareConnector(frame, aId, bId) {
+      const aPos = (frame.player_data || []).find((p) => p.player_id === aId);
+      const bPos = (frame.player_data || []).find((p) => p.player_id === bId);
+      if (!aPos || !bPos) return;
+
+      const a = toCanvas(aPos.x, aPos.y);
+      const b = toCanvas(bPos.x, bPos.y);
+
+      pitchCtx.beginPath();
+      pitchCtx.setLineDash([8, 6]);
+      pitchCtx.strokeStyle = "rgba(20,20,20,0.55)";
+      pitchCtx.lineWidth = 2;
+      pitchCtx.moveTo(a.x, a.y);
+      pitchCtx.lineTo(b.x, b.y);
+      pitchCtx.stroke();
+      pitchCtx.setLineDash([]);
+
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      const dist = Math.hypot(aPos.x - bPos.x, aPos.y - bPos.y);
+      const txt = `A↔B distance: ${dist.toFixed(1)}m`;
+      pitchCtx.font = "11px Manrope";
+      const tw = pitchCtx.measureText(txt).width + 10;
+      pitchCtx.fillStyle = "rgba(255,255,255,0.92)";
+      pitchCtx.fillRect(midX - tw / 2, midY - 18, tw, 14);
+      pitchCtx.fillStyle = "#202020";
+      pitchCtx.fillText(txt, midX - tw / 2 + 5, midY - 8);
+    }
+
+    function drawComparativeGlyph(c, metricId, pid, aId, bId) {
+      const aVal = state.metricData[aId]?.[metricId]?.[state.frameIndex] ?? 0;
+      const bVal = state.metricData[bId]?.[metricId]?.[state.frameIndex] ?? 0;
+
+      const ownVal = pid === aId ? aVal : bVal;
+      const oppVal = pid === aId ? bVal : aVal;
+      const diff = ownVal - oppVal;
+      const range = (state.normalizers[metricId]?.max || 1) - (state.normalizers[metricId]?.min || 0) || 1;
+      const d = Math.max(-1, Math.min(1, diff / range));
+
+      if (state.comparisonVizMode === "deltaDisc") {
+        pitchCtx.beginPath();
+        pitchCtx.fillStyle = d >= 0 ? "rgba(18,138,103,0.78)" : "rgba(203,57,37,0.78)";
+        pitchCtx.arc(c.x, c.y, 10 + Math.abs(d) * 16, 0, Math.PI * 2);
+        pitchCtx.fill();
+        return;
+      }
+
+      pitchCtx.beginPath();
+      pitchCtx.fillStyle = "rgba(255,255,255,0.82)";
+      pitchCtx.arc(c.x, c.y, 24, 0, Math.PI * 2);
+      pitchCtx.fill();
+
+      const plusSweep = Math.max(0, d) * Math.PI * 2;
+      const minusSweep = Math.max(0, -d) * Math.PI * 2;
+
+      if (plusSweep > 0) {
+        pitchCtx.beginPath();
+        pitchCtx.moveTo(c.x, c.y);
+        pitchCtx.fillStyle = "rgba(18,138,103,0.82)";
+        pitchCtx.arc(c.x, c.y, 22, -Math.PI / 2, -Math.PI / 2 + plusSweep);
+        pitchCtx.closePath();
+        pitchCtx.fill();
+      }
+
+      if (minusSweep > 0) {
+        pitchCtx.beginPath();
+        pitchCtx.moveTo(c.x, c.y);
+        pitchCtx.fillStyle = "rgba(203,57,37,0.82)";
+        pitchCtx.arc(c.x, c.y, 22, Math.PI / 2, Math.PI / 2 + minusSweep);
+        pitchCtx.closePath();
+        pitchCtx.fill();
+      }
+    }
+
+    function smoothArray(arr, win) {
+      const out = new Array(arr.length).fill(0);
+      for (let i = 0; i < arr.length; i += 1) {
+        const s = Math.max(0, i - win + 1);
+        let sum = 0;
+        let c = 0;
+        for (let k = s; k <= i; k += 1) {
+          if (Number.isFinite(arr[k])) {
+            sum += arr[k];
+            c += 1;
+          }
+        }
+        out[i] = c ? sum / c : 0;
+      }
+      return out;
+    }
+
+    function buildWorkerURL() {
+      const workerCode = `
+        const FRAME_DT = 0.1;
+        const ACTIVE_SPEED = 1.2;
+        const SPRINT_SPEED = 7.0;
+        const HI_SPEED = 5.5;
+        const HI_ACCEL = 1.3;
+
+        function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+
+        function safeDiffAngle(a,b){
+          let d = a - b;
+          while (d > Math.PI) d -= 2 * Math.PI;
+          while (d < -Math.PI) d += 2 * Math.PI;
+          return Math.abs(d);
+        }
+
+        function rolling(arr, i, win){
+          const s = Math.max(0, i - win + 1);
+          let sum = 0;
+          let c = 0;
+          for (let k = s; k <= i; k += 1) {
+            const v = arr[k];
+            if (Number.isFinite(v)) { sum += v; c += 1; }
+          }
+          return c ? sum / c : 0;
+        }
+
+        function compactness(playersAtFrame, playerToTeam){
+          const byTeam = new Map();
+          for (const p of playersAtFrame) {
+            const t = playerToTeam[p.player_id] ?? -1;
+            if (!byTeam.has(t)) byTeam.set(t, []);
+            byTeam.get(t).push(p);
+          }
+
+          const out = {};
+          byTeam.forEach((list, teamId) => {
+            if (!list.length) return;
+            const cx = list.reduce((a,p) => a + p.x, 0) / list.length;
+            const cy = list.reduce((a,p) => a + p.y, 0) / list.length;
+            const spread = list.reduce((a,p) => a + Math.hypot(p.x - cx, p.y - cy), 0) / list.length;
+            for (const p of list) out[p.player_id] = spread;
+          });
+          return out;
+        }
+
+        self.onmessage = (event) => {
+          if (event.data?.type !== "compute") return;
+          const { frames, players, playerToTeam, pitchLength, pitchWidth } = event.data.payload;
+
+          const ids = players.map((p) => p.id);
+          const n = frames.length;
+
+          const positions = {};
+          const data = {};
+          const teamCentroidX = {};
+
+          for (const id of ids) {
+            positions[id] = new Array(n).fill(null);
+            data[id] = {
+              velocity: new Array(n).fill(0),
+              acceleration: new Array(n).fill(0),
+              deceleration: new Array(n).fill(0),
+              deltaAngle: new Array(n).fill(0),
+              distanceCovered: new Array(n).fill(0),
+              sprintIntensity: new Array(n).fill(0),
+              timeInPossessionZone: new Array(n).fill(0),
+              timeOnPitch: new Array(n).fill(0),
+              activeTime: new Array(n).fill(0),
+              idleTimeRatio: new Array(n).fill(0),
+              zoneTimeDef: new Array(n).fill(0),
+              zoneTimeMid: new Array(n).fill(0),
+              zoneTimeAtt: new Array(n).fill(0),
+              heatIntensityScore: new Array(n).fill(0),
+              fatigueIndex: new Array(n).fill(0),
+              workRatePerMinute: new Array(n).fill(0),
+              highIntensityIntervals: new Array(n).fill(0),
+              pitchCoverageArea: new Array(n).fill(0),
+              heatmapDensityScore: new Array(n).fill(0),
+              positionalStabilityIndex: new Array(n).fill(0),
+              averagePositionDrift: new Array(n).fill(0),
+              pressingIntensityIndex: new Array(n).fill(0),
+              distanceNearestOpponent: new Array(n).fill(0),
+              teamCompactnessScore: new Array(n).fill(0),
+              transitionSpeed: new Array(n).fill(0),
+            };
+          }
+
+          for (let i = 0; i < n; i += 1) {
+            for (const p of frames[i].player_data || []) {
+              if (positions[p.player_id]) {
+                positions[p.player_id][i] = { x: p.x, y: p.y };
+              }
+            }
+          }
+
+          const gxCount = 14;
+          const gyCount = 9;
+          const gridTotal = gxCount * gyCount;
+
+          for (const id of ids) {
+            const pos = positions[id];
+            const d = data[id];
+            const visited = new Set();
+
+            let distCum = 0;
+            let tOn = 0;
+            let tActive = 0;
+            let zDef = 0;
+            let zMid = 0;
+            let zAtt = 0;
+            let sprintCount = 0;
+            let hiCount = 0;
+            let fatigue = 0;
+            let prevV = 0;
+            let prevAng = 0;
+
+            for (let i = 1; i < n; i += 1) {
+              const a = pos[i - 1];
+              const b = pos[i];
+
+              if (b) tOn += FRAME_DT;
+              d.timeOnPitch[i] = tOn;
+
+              if (a && b) {
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
+                const dist = Math.hypot(dx, dy);
+                const v = dist / FRAME_DT;
+                const acc = (v - prevV) / FRAME_DT;
+                const ang = Math.atan2(dy, dx);
+                const da = safeDiffAngle(ang, prevAng);
+
+                distCum += dist;
+                d.velocity[i] = v;
+                d.acceleration[i] = acc;
+                d.deceleration[i] = acc < 0 ? -acc : 0;
+                d.deltaAngle[i] = da;
+                d.distanceCovered[i] = distCum;
+
+                if (v > SPRINT_SPEED) sprintCount += 1;
+                d.sprintIntensity[i] = sprintCount / Math.max(1, tOn);
+
+                if (v > ACTIVE_SPEED) tActive += FRAME_DT;
+                d.activeTime[i] = tActive;
+                d.idleTimeRatio[i] = tOn ? (tOn - tActive) / tOn : 0;
+
+                const xn = b.x / (pitchLength / 2);
+                if (xn < -0.33) zDef += FRAME_DT;
+                else if (xn < 0.33) zMid += FRAME_DT;
+                else zAtt += FRAME_DT;
+                d.zoneTimeDef[i] = zDef;
+                d.zoneTimeMid[i] = zMid;
+                d.zoneTimeAtt[i] = zAtt;
+                d.timeInPossessionZone[i] = zAtt;
+
+                d.heatIntensityScore[i] = 0.6 * rolling(d.velocity, i, 25) + 0.4 * rolling(d.acceleration, i, 25);
+                fatigue = fatigue * 0.98 + (Math.abs(acc) * 0.02 + rolling(d.sprintIntensity, i, 30) * 0.05);
+                d.fatigueIndex[i] = fatigue;
+
+                d.workRatePerMinute[i] = tOn ? distCum / (tOn / 60) : 0;
+                if (v > HI_SPEED && acc > HI_ACCEL) hiCount += 1;
+                d.highIntensityIntervals[i] = hiCount;
+
+                const gx = Math.floor(((b.x + pitchLength / 2) / pitchLength) * gxCount);
+                const gy = Math.floor(((b.y + pitchWidth / 2) / pitchWidth) * gyCount);
+                const key = Math.max(0, Math.min(gxCount - 1, gx)) + "_" + Math.max(0, Math.min(gyCount - 1, gy));
+                visited.add(key);
+                d.pitchCoverageArea[i] = visited.size / gridTotal;
+                d.heatmapDensityScore[i] = visited.size ? distCum / visited.size : 0;
+
+                const w = 60;
+                const s = Math.max(0, i - w + 1);
+                let mx = 0;
+                let my = 0;
+                let c = 0;
+                for (let k = s; k <= i; k += 1) {
+                  if (pos[k]) { mx += pos[k].x; my += pos[k].y; c += 1; }
+                }
+                if (c) {
+                  mx /= c;
+                  my /= c;
+                  let varSum = 0;
+                  for (let k = s; k <= i; k += 1) {
+                    if (pos[k]) varSum += (pos[k].x - mx) ** 2 + (pos[k].y - my) ** 2;
+                  }
+                  const std = Math.sqrt(varSum / c);
+                  d.positionalStabilityIndex[i] = 1 / (1 + std);
+                  d.averagePositionDrift[i] = Math.hypot(b.x - mx, b.y - my);
+                }
+
+                prevV = v;
+                prevAng = ang;
+              } else {
+                d.distanceCovered[i] = distCum;
+                d.sprintIntensity[i] = tOn ? sprintCount / tOn : 0;
+                d.activeTime[i] = tActive;
+                d.idleTimeRatio[i] = tOn ? (tOn - tActive) / tOn : 0;
+                d.zoneTimeDef[i] = zDef;
+                d.zoneTimeMid[i] = zMid;
+                d.zoneTimeAtt[i] = zAtt;
+                d.timeInPossessionZone[i] = zAtt;
+                d.fatigueIndex[i] = fatigue;
+                d.workRatePerMinute[i] = tOn ? distCum / (tOn / 60) : 0;
+                d.highIntensityIntervals[i] = hiCount;
+                d.pitchCoverageArea[i] = visited.size / gridTotal;
+                d.heatmapDensityScore[i] = visited.size ? distCum / visited.size : 0;
+              }
+            }
+          }
+
+          for (let i = 0; i < n; i += 1) {
+            const playersAtFrame = frames[i].player_data || [];
+
+            const byTeam = new Map();
+            for (const p of playersAtFrame) {
+              const tid = playerToTeam[p.player_id] ?? -1;
+              if (!byTeam.has(tid)) byTeam.set(tid, []);
+              byTeam.get(tid).push(p);
+            }
+
+            byTeam.forEach((list, tid) => {
+              if (!list.length) return;
+              const cx = list.reduce((a,p) => a + p.x, 0) / list.length;
+              if (!teamCentroidX[tid]) teamCentroidX[tid] = new Array(n).fill(0);
+              teamCentroidX[tid][i] = cx;
+            });
+
+            const cmp = compactness(playersAtFrame, playerToTeam);
+
+            for (const p of playersAtFrame) {
+              const id = p.player_id;
+              if (!data[id]) continue;
+              data[id].teamCompactnessScore[i] = cmp[id] || 0;
+
+              let near = Infinity;
+              for (const q of playersAtFrame) {
+                if (q.player_id === id) continue;
+                if ((playerToTeam[q.player_id] ?? -1) === (playerToTeam[id] ?? -1)) continue;
+                near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y));
+              }
+              data[id].distanceNearestOpponent[i] = Number.isFinite(near) ? near : 0;
+
+              const ball = frames[i].ball_data;
+              if (ball && Number.isFinite(ball.x) && Number.isFinite(ball.y)) {
+                const db = Math.hypot(ball.x - p.x, ball.y - p.y);
+                const vel = data[id].velocity[i] || 0;
+                data[id].pressingIntensityIndex[i] = db < 20 ? vel * (1 - clamp01(db / 20)) : 0;
+              }
+            }
+          }
+
+          Object.keys(teamCentroidX).forEach((teamId) => {
+            const arr = teamCentroidX[teamId];
+            const trans = new Array(n).fill(0);
+            for (let i = 1; i < n; i += 1) trans[i] = Math.abs((arr[i] - arr[i - 1]) / FRAME_DT);
+            for (const id of ids) {
+              if ((playerToTeam[id] ?? -1) === Number(teamId)) {
+                data[id].transitionSpeed = trans;
+              }
+            }
+          });
+
+          self.postMessage({ type: "ready", payload: { data } });
+        };
+      `;
+      return URL.createObjectURL(new Blob([workerCode], { type: "application/javascript" }));
+    }
+
+    async function computeMetrics() {
+      const url = buildWorkerURL();
+      const worker = new Worker(url, { type: "module" });
+      return new Promise((resolve, reject) => {
+        worker.onmessage = (e) => {
+          if (e.data?.type === "ready") {
+            resolve(e.data.payload.data);
+            worker.terminate();
+            URL.revokeObjectURL(url);
+          }
+        };
+        worker.onerror = (err) => {
+          reject(err);
+          worker.terminate();
+          URL.revokeObjectURL(url);
+        };
+
+        worker.postMessage({
+          type: "compute",
+          payload: {
+            frames: state.frames,
+            players: state.playerList,
+            playerToTeam: Object.fromEntries(state.playerList.map((p) => [p.id, p.teamId])),
+            pitchLength: state.pitchLength,
+            pitchWidth: state.pitchWidth,
+          },
+        });
+      });
+    }
+
+    function buildNormalizers() {
+      const out = {};
+      for (const m of METRICS) {
+        let min = Number.POSITIVE_INFINITY;
+        let max = Number.NEGATIVE_INFINITY;
+        for (const p of state.playerList) {
+          const arr = state.metricData[p.id]?.[m.id];
+          if (!arr) continue;
+          for (const v of arr) {
+            if (!Number.isFinite(v)) continue;
+            min = Math.min(min, v);
+            max = Math.max(max, v);
+          }
+        }
+        if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
+          min = 0;
+          max = 1;
+        }
+        out[m.id] = { min, max };
+      }
+      state.normalizers = out;
+    }
+
+    function norm(metricId, v) {
+      const n = state.normalizers[metricId];
+      if (!n) return 0;
+      return (v - n.min) / (n.max - n.min || 1);
+    }
+
+    function composite(playerId, frameIndex) {
+      const ids = [...state.selectedMetrics];
+      if (!ids.length) return 0;
+      let sum = 0;
+      let wsum = 0;
+      for (const id of ids) {
+        const w = Number(state.weights[id] ?? 1);
+        const raw = state.metricData[playerId]?.[id]?.[frameIndex] ?? 0;
+        sum += norm(id, raw) * w;
+        wsum += w;
+      }
+      return wsum ? sum / wsum : 0;
+    }
+
+    function drawGrassBands() {
+      const w = ui.pitchCanvas.width;
+      const h = ui.pitchCanvas.height;
+      const bands = 12;
+      const bandW = w / bands;
+      for (let i = 0; i < bands; i += 1) {
+        pitchCtx.fillStyle = i % 2 === 0 ? "#3a9953" : "#2f8f46";
+        pitchCtx.fillRect(i * bandW, 0, bandW + 1, h);
+      }
+    }
+
+    function drawPitchMarkings() {
+      const w = ui.pitchCanvas.width;
+      const h = ui.pitchCanvas.height;
+      const margin = 20;
+      const innerW = w - margin * 2;
+      const innerH = h - margin * 2;
+
+      const sx = innerW / state.pitchLength;
+      const sy = innerH / state.pitchWidth;
+      const s = Math.min(sx, sy);
+
+      const line = "rgba(255,255,255,0.95)";
+      const thin = Math.max(2, s * 0.16);
+      const thick = thin + 0.8;
+
+      const cx = w / 2;
+      const cy = h / 2;
+
+      pitchCtx.strokeStyle = line;
+      pitchCtx.lineWidth = thick;
+
+      // Outer boundary.
+      pitchCtx.strokeRect(margin, margin, innerW, innerH);
+
+      // Halfway line.
+      pitchCtx.beginPath();
+      pitchCtx.moveTo(cx, margin);
+      pitchCtx.lineTo(cx, h - margin);
+      pitchCtx.stroke();
+
+      // Center circle + spot.
+      const centerRadius = 9.15 * s;
+      pitchCtx.beginPath();
+      pitchCtx.arc(cx, cy, centerRadius, 0, Math.PI * 2);
+      pitchCtx.stroke();
+      pitchCtx.beginPath();
+      pitchCtx.fillStyle = line;
+      pitchCtx.arc(cx, cy, Math.max(2.5, thin), 0, Math.PI * 2);
+      pitchCtx.fill();
+
+      // Penalty and 6-yard boxes.
+      const penaltyDepth = 16.5 * s;
+      const sixDepth = 5.5 * s;
+      const penaltyWidth = 40.3 * s;
+      const sixWidth = 18.32 * s;
+
+      const pTop = cy - penaltyWidth / 2;
+      const pBottom = cy + penaltyWidth / 2;
+      const sTop = cy - sixWidth / 2;
+      const sBottom = cy + sixWidth / 2;
+
+      // Left boxes.
+      pitchCtx.strokeRect(margin, pTop, penaltyDepth, penaltyWidth);
+      pitchCtx.strokeRect(margin, sTop, sixDepth, sixWidth);
+
+      // Right boxes.
+      pitchCtx.strokeRect(w - margin - penaltyDepth, pTop, penaltyDepth, penaltyWidth);
+      pitchCtx.strokeRect(w - margin - sixDepth, sTop, sixDepth, sixWidth);
+
+      // Penalty spots.
+      const penaltySpotDist = 11 * s;
+      pitchCtx.beginPath();
+      pitchCtx.arc(margin + penaltySpotDist, cy, Math.max(2.5, thin), 0, Math.PI * 2);
+      pitchCtx.arc(w - margin - penaltySpotDist, cy, Math.max(2.5, thin), 0, Math.PI * 2);
+      pitchCtx.fill();
+
+      // Penalty arcs.
+      const arcRadius = 9.15 * s;
+      pitchCtx.lineWidth = thin;
+      pitchCtx.beginPath();
+      pitchCtx.arc(margin + penaltySpotDist, cy, arcRadius, -0.92, 0.92);
+      pitchCtx.stroke();
+      pitchCtx.beginPath();
+      pitchCtx.arc(w - margin - penaltySpotDist, cy, arcRadius, Math.PI - 0.92, Math.PI + 0.92);
+      pitchCtx.stroke();
+
+      // Corner quarter-circles.
+      const cR = 1.0 * s;
+      pitchCtx.beginPath();
+      pitchCtx.arc(margin, margin, cR, 0, Math.PI / 2);
+      pitchCtx.stroke();
+      pitchCtx.beginPath();
+      pitchCtx.arc(w - margin, margin, cR, Math.PI / 2, Math.PI);
+      pitchCtx.stroke();
+      pitchCtx.beginPath();
+      pitchCtx.arc(margin, h - margin, cR, -Math.PI / 2, 0);
+      pitchCtx.stroke();
+      pitchCtx.beginPath();
+      pitchCtx.arc(w - margin, h - margin, cR, Math.PI, Math.PI * 1.5);
+      pitchCtx.stroke();
+    }
+
+    function drawPitch() {
+      pitchCtx.clearRect(0, 0, ui.pitchCanvas.width, ui.pitchCanvas.height);
+
+      if (state.pitchImage) {
+        drawGrassBands();
+        pitchCtx.save();
+        pitchCtx.globalAlpha = 0.5;
+        pitchCtx.drawImage(state.pitchImage, 0, 0, ui.pitchCanvas.width, ui.pitchCanvas.height);
+        pitchCtx.restore();
+        pitchCtx.fillStyle = "rgba(0,0,0,0.06)";
+        pitchCtx.fillRect(0, 0, ui.pitchCanvas.width, ui.pitchCanvas.height);
+      } else {
+        drawGrassBands();
+      }
+
+      drawPitchMarkings();
+      drawTeamLegendOnPitch();
+
+      const frame = state.frames[state.frameIndex];
+      if (!frame) return;
+
+      const selected = [...state.selectedMetrics].filter((id) => state.layerCfg[id]?.visible !== false);
+      const allSelected = selected.length === METRICS.length;
+      const mode = allSelected ? "composite" : state.mode;
+      const compareA = Number(state.compareA || 0);
+      const compareB = Number(state.compareB || 0);
+      const compareSet = new Set([compareA, compareB]);
+
+      if (selected.length >= 3 && mode === "overlay") {
+        drawHeatComposite(frame, selected);
+      }
+
+      if (selected.length > 0 && state.layerCfg.voronoi?.visible) {
+        drawVoronoi(frame, selected[0]);
+      }
+
+      for (const p of frame.player_data || []) {
+        const pid = p.player_id;
+        if (mode === "comparative") {
+          if (!compareSet.has(pid)) continue;
+        } else if (state.focus !== "ALL" && Number(state.focus) !== pid) {
+          continue;
+        }
+
+        const c = toCanvas(p.x, p.y);
+
+        if (mode === "overlay") {
+          selected.forEach((metricId, idx) => {
+            const val = state.metricData[pid]?.[metricId]?.[state.frameIndex] ?? 0;
+            const n = state.layerCfg[metricId]?.normalized === false ? val : norm(metricId, val);
+            const op = state.layerCfg[metricId]?.opacity ?? 0.7;
+            const r = 7 + Math.max(0, n) * 13 + idx * 1.5;
+            pitchCtx.beginPath();
+            pitchCtx.fillStyle = colorFor(metricId, n, op);
+            pitchCtx.arc(c.x, c.y, r, 0, Math.PI * 2);
+            pitchCtx.fill();
+          });
+        } else if (mode === "composite") {
+          const cv = composite(pid, state.frameIndex);
+          pitchCtx.beginPath();
+          pitchCtx.fillStyle = colorFor("fatigueIndex", cv, 0.8);
+          pitchCtx.arc(c.x, c.y, 8 + cv * 18, 0, Math.PI * 2);
+          pitchCtx.fill();
+        } else if (mode === "comparative") {
+          const metricId = selected[0] || "velocity";
+          drawComparativeGlyph(c, metricId, pid, compareA, compareB);
+        } else {
+          const metricId = selected[0] || "velocity";
+          const arr = smoothArray(state.metricData[pid]?.[metricId] || [], state.smoothWindow);
+          const n = norm(metricId, arr[state.frameIndex] || 0);
+          pitchCtx.beginPath();
+          pitchCtx.fillStyle = colorFor(metricId, n, 0.78);
+          pitchCtx.arc(c.x, c.y, 7 + n * 16, 0, Math.PI * 2);
+          pitchCtx.fill();
+        }
+
+        const teamColor = teamColorByPlayer(pid);
+        pitchCtx.beginPath();
+        pitchCtx.strokeStyle = teamColor;
+        pitchCtx.lineWidth = 3;
+        pitchCtx.arc(c.x, c.y, 9, 0, Math.PI * 2);
+        pitchCtx.stroke();
+
+        pitchCtx.beginPath();
+        pitchCtx.fillStyle = teamColor;
+        pitchCtx.arc(c.x, c.y, 2.4, 0, Math.PI * 2);
+        pitchCtx.fill();
+
+        pitchCtx.fillStyle = "#0f0f0f";
+        pitchCtx.font = "11px Manrope";
+        const name = state.playersById[pid]?.name || String(pid);
+        pitchCtx.fillText(name.split(" ")[0], c.x + 11, c.y - 12);
+
+        const labelMode = mode === "comparative" ? "all" : state.pitchMetricLabelMode;
+        const metricLines = metricLabelText(pid, selected, state.frameIndex, labelMode);
+        metricLines.forEach((line, idx) => {
+          const y = c.y + 14 + idx * 12;
+          pitchCtx.fillStyle = "rgba(255,255,255,0.9)";
+          const w = pitchCtx.measureText(line).width + 8;
+          pitchCtx.fillRect(c.x + 10, y - 9, w, 11);
+          pitchCtx.fillStyle = teamColor;
+          pitchCtx.font = "10px Manrope";
+          pitchCtx.fillText(line, c.x + 14, y);
+        });
+      }
+
+      if (mode === "comparative") {
+        drawCompareConnector(frame, compareA, compareB);
+      }
+
+      if (frame.ball_data && Number.isFinite(frame.ball_data.x) && Number.isFinite(frame.ball_data.y)) {
+        const b = toCanvas(frame.ball_data.x, frame.ball_data.y);
+        pitchCtx.beginPath();
+        pitchCtx.fillStyle = "#fff";
+        pitchCtx.strokeStyle = "#444";
+        pitchCtx.lineWidth = 2;
+        pitchCtx.arc(b.x, b.y, 7, 0, Math.PI * 2);
+        pitchCtx.fill();
+        pitchCtx.stroke();
+      }
+    }
+
+    function drawVoronoi(frame, metricId) {
+      const points = [];
+      const owners = [];
+      for (const p of frame.player_data || []) {
+        if (state.focus !== "ALL" && Number(state.focus) !== p.player_id) continue;
+        const c = toCanvas(p.x, p.y);
+        points.push([c.x, c.y]);
+        owners.push(p.player_id);
+      }
+      if (points.length < 3 || !window.d3?.Delaunay) return;
+
+      const delaunay = d3.Delaunay.from(points);
+      const vor = delaunay.voronoi([0, 0, ui.pitchCanvas.width, ui.pitchCanvas.height]);
+      const op = state.layerCfg.voronoi?.opacity ?? 0.2;
+
+      for (let i = 0; i < points.length; i += 1) {
+        const poly = vor.cellPolygon(i);
+        if (!poly) continue;
+        const pid = owners[i];
+        const raw = state.metricData[pid]?.[metricId]?.[state.frameIndex] ?? 0;
+        const n = norm(metricId, raw);
+
+        pitchCtx.beginPath();
+        pitchCtx.moveTo(poly[0][0], poly[0][1]);
+        for (let k = 1; k < poly.length; k += 1) pitchCtx.lineTo(poly[k][0], poly[k][1]);
+        pitchCtx.closePath();
+        pitchCtx.fillStyle = colorFor(metricId, n, op);
+        pitchCtx.fill();
+        pitchCtx.strokeStyle = "rgba(0,0,0,.12)";
+        pitchCtx.lineWidth = 1;
+        pitchCtx.stroke();
+      }
+    }
+
+    function drawHeatComposite(frame, selected) {
+      const step = 44;
+      for (let y = 0; y < ui.pitchCanvas.height; y += step) {
+        for (let x = 0; x < ui.pitchCanvas.width; x += step) {
+          let score = 0;
+          let count = 0;
+          for (const p of frame.player_data || []) {
+            const c = toCanvas(p.x, p.y);
+            const d = Math.hypot(c.x - x, c.y - y);
+            if (d > 150) continue;
+
+            let local = 0;
+            for (const m of selected.slice(0, 5)) {
+              const raw = state.metricData[p.player_id]?.[m]?.[state.frameIndex] ?? 0;
+              local += norm(m, raw);
+            }
+            local /= Math.max(1, selected.slice(0, 5).length);
+            score += local * (1 - d / 150);
+            count += 1;
+          }
+
+          if (!count) continue;
+          const n = Math.max(0, Math.min(1, score / count));
+          pitchCtx.fillStyle = `rgba(200,30,30,${0.08 + n * 0.25})`;
+          pitchCtx.fillRect(x, y, step, step);
+        }
+      }
+    }
+
+    function drawTimeline() {
+      // Temporal trend graph removed by request.
+    }
+
+    function updateModeControlState() {
+      const comparative = state.mode === "comparative";
+      ui.compareASel.disabled = false;
+      ui.compareBSel.disabled = false;
+      ui.focusSel.disabled = false;
+      ui.comparisonVizMode.disabled = !comparative;
+
+      ui.compareASel.title = comparative ? "Comparison player A" : "Select to switch into comparative mode";
+      ui.compareBSel.title = comparative ? "Comparison player B" : "Select to switch into comparative mode";
+      ui.focusSel.title = comparative ? "Focus is ignored in comparative mode" : "Focused player in current mode";
+    }
+
+    function renderReadout() {
+      ui.readBox.innerHTML = "";
+      const selected = [...state.selectedMetrics];
+      if (!selected.length || !state.playerList.length) return;
+
+      if (state.mode === "comparative") {
+        const metricId = selected[0] || "velocity";
+        const a = Number(state.compareA || 0);
+        const b = Number(state.compareB || 0);
+        const aName = state.playersById[a]?.name || String(a);
+        const bName = state.playersById[b]?.name || String(b);
+
+        const head = document.createElement("div");
+        head.className = "compare-head";
+        head.textContent = `Comparative Readout (${metricId})`;
+        ui.readBox.appendChild(head);
+
+        const gridHead = document.createElement("div");
+        gridHead.className = "compare-grid";
+        gridHead.innerHTML = `<strong>Metric</strong><strong>A: ${aName}</strong><strong>B: ${bName}</strong>`;
+        ui.readBox.appendChild(gridHead);
+
+        selected.slice(0, 5).forEach((m) => {
+          const row = document.createElement("div");
+          row.className = "compare-grid";
+          const aVal = state.metricData[a]?.[m]?.[state.frameIndex] ?? 0;
+          const bVal = state.metricData[b]?.[m]?.[state.frameIndex] ?? 0;
+          row.innerHTML = `<span>${METRICS.find((x) => x.id === m)?.label || m}</span><strong>${aVal.toFixed(3)}</strong><strong>${bVal.toFixed(3)}</strong>`;
+          ui.readBox.appendChild(row);
+        });
+
+        const delta = document.createElement("div");
+        delta.className = "compare-head";
+        const aMetric = state.metricData[a]?.[metricId]?.[state.frameIndex] ?? 0;
+        const bMetric = state.metricData[b]?.[metricId]?.[state.frameIndex] ?? 0;
+        delta.textContent = `Delta (A-B): ${(aMetric - bMetric).toFixed(3)}`;
+        ui.readBox.appendChild(delta);
+        return;
+      }
+
+      const focusId = state.focus === "ALL" ? state.playerList[0].id : Number(state.focus);
+      for (const m of selected) {
+        const row = document.createElement("div");
+        row.className = "read-row";
+        const n = document.createElement("span");
+        n.textContent = METRICS.find((x) => x.id === m)?.label || m;
+        const v = document.createElement("strong");
+        const raw = state.metricData[focusId]?.[m]?.[state.frameIndex] ?? 0;
+        v.textContent = raw.toFixed(3);
+        row.append(n, v);
+        ui.readBox.appendChild(row);
+      }
+
+      if (state.mode === "composite" || selected.length === METRICS.length) {
+        const row = document.createElement("div");
+        row.className = "read-row";
+        const n = document.createElement("span");
+        n.textContent = "Composite Index";
+        const v = document.createElement("strong");
+        v.textContent = composite(focusId, state.frameIndex).toFixed(3);
+        row.append(n, v);
+        ui.readBox.appendChild(row);
+      }
+    }
+
+    function renderHealth() {
+      const items = [
+        `Frames: ${state.frames.length}`,
+        `Players: ${state.playerList.length}`,
+        `Selected metrics: ${state.selectedMetrics.size}`,
+        `Mode: ${state.mode}`,
+        `Frame aligned 10Hz: yes`,
+      ];
+      ui.healthBox.innerHTML = "";
+      items.forEach((t) => {
+        const li = document.createElement("li");
+        li.textContent = t;
+        ui.healthBox.appendChild(li);
+      });
+    }
+
+    function renderMetricGroups() {
+      const q = ui.metricSearch.value.trim().toLowerCase();
+      const groups = { physical: [], tactical: [], spatial: [], temporal: [] };
+
+      for (const m of METRICS) {
+        if (q && !m.label.toLowerCase().includes(q) && !m.id.toLowerCase().includes(q)) continue;
+        groups[m.group].push(m);
+        if (!state.layerCfg[m.id]) state.layerCfg[m.id] = { opacity: 0.7, normalized: true, visible: true };
+        if (!(m.id in state.weights)) state.weights[m.id] = 1;
+      }
+
+      ui.metricGroups.innerHTML = "";
+      Object.entries(groups).forEach(([name, list]) => {
+        if (!list.length) return;
+        const box = document.createElement("div");
+        box.className = "metric-group";
+
+        const title = document.createElement("strong");
+        title.textContent = name.toUpperCase();
+        box.appendChild(title);
+
+        list.forEach((m) => {
+          const row = document.createElement("label");
+          row.className = "metric-row";
+
+          const chk = document.createElement("input");
+          chk.type = "checkbox";
+          chk.checked = state.selectedMetrics.has(m.id);
+          chk.addEventListener("change", () => {
+            if (chk.checked) state.selectedMetrics.add(m.id);
+            else state.selectedMetrics.delete(m.id);
+
+            if (state.selectedMetrics.size === METRICS.length) {
+              state.mode = "composite";
+              ui.modeSel.value = "composite";
+            }
+
+            renderWeights();
+            renderLayers();
+            render();
+          });
+
+          const txt = document.createElement("span");
+          txt.textContent = m.label;
+          row.append(chk, txt);
+          box.appendChild(row);
+        });
+
+        ui.metricGroups.appendChild(box);
+      });
+    }
+
+    function renderLayers() {
+      ui.layerBox.innerHTML = "";
+
+      const selected = [...state.selectedMetrics];
+      selected.forEach((mId) => {
+        const row = document.createElement("div");
+        row.className = "layer-row";
+
+        const label = document.createElement("span");
+        label.textContent = METRICS.find((m) => m.id === mId)?.label || mId;
+
+        const op = document.createElement("input");
+        op.type = "range";
+        op.min = "0.05";
+        op.max = "1";
+        op.step = "0.05";
+        op.value = String(state.layerCfg[mId].opacity ?? 0.7);
+        op.addEventListener("input", () => {
+          state.layerCfg[mId].opacity = Number(op.value);
+          render();
+        });
+
+        const vis = document.createElement("input");
+        vis.type = "checkbox";
+        vis.checked = state.layerCfg[mId].visible !== false;
+        vis.addEventListener("change", () => {
+          state.layerCfg[mId].visible = vis.checked;
+          if (!vis.checked) state.selectedMetrics.delete(mId);
+          renderMetricGroups();
+          renderWeights();
+          render();
+        });
+
+        row.append(label, op, vis);
+        ui.layerBox.appendChild(row);
+      });
+
+      if (!state.layerCfg.voronoi) state.layerCfg.voronoi = { visible: true, opacity: 0.22 };
+      const vr = document.createElement("div");
+      vr.className = "layer-row";
+      const vLab = document.createElement("span");
+      vLab.textContent = "Voronoi zone pressure";
+      const vOp = document.createElement("input");
+      vOp.type = "range";
+      vOp.min = "0.05";
+      vOp.max = "0.6";
+      vOp.step = "0.01";
+      vOp.value = String(state.layerCfg.voronoi.opacity);
+      vOp.addEventListener("input", () => {
+        state.layerCfg.voronoi.opacity = Number(vOp.value);
+        render();
+      });
+      const vChk = document.createElement("input");
+      vChk.type = "checkbox";
+      vChk.checked = state.layerCfg.voronoi.visible;
+      vChk.addEventListener("change", () => {
+        state.layerCfg.voronoi.visible = vChk.checked;
+        render();
+      });
+      vr.append(vLab, vOp, vChk);
+      ui.layerBox.appendChild(vr);
+    }
+
+    function renderWeights() {
+      ui.weightBox.innerHTML = "";
+      [...state.selectedMetrics].forEach((mId) => {
+        const row = document.createElement("div");
+        row.className = "weight-row";
+        const n = document.createElement("span");
+        n.textContent = METRICS.find((m) => m.id === mId)?.label || mId;
+
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.min = "0";
+        slider.max = "3";
+        slider.step = "0.05";
+        slider.value = String(state.weights[mId] ?? 1);
+        slider.addEventListener("input", () => {
+          state.weights[mId] = Number(slider.value);
+          render();
+        });
+
+        row.append(n, slider);
+        ui.weightBox.appendChild(row);
+      });
+    }
+
+    function renderPlayersSelects() {
+      const opts = [{ id: "ALL", name: "All players" }, ...state.playerList];
+      [ui.focusSel, ui.compareASel, ui.compareBSel].forEach((sel) => {
+        sel.innerHTML = "";
+        opts.forEach((p) => {
+          const o = document.createElement("option");
+          o.value = String(p.id);
+          o.textContent = p.name;
+          sel.appendChild(o);
+        });
+      });
+
+      ui.focusSel.value = state.focus;
+      if (!state.compareA && state.playerList[0]) state.compareA = String(state.playerList[0].id);
+      if (!state.compareB && state.playerList[1]) state.compareB = String(state.playerList[1].id);
+      ui.compareASel.value = state.compareA;
+      ui.compareBSel.value = state.compareB;
+    }
+
+    function getUserPresets() {
+      try {
+        return JSON.parse(localStorage.getItem("advanced2dPresets") || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function setUserPresets(p) {
+      localStorage.setItem("advanced2dPresets", JSON.stringify(p));
+    }
+
+    function renderPresets() {
+      const all = { ...PRESETS, ...getUserPresets() };
+      ui.presetSel.innerHTML = "";
+      Object.keys(all).forEach((name) => {
+        const o = document.createElement("option");
+        o.value = name;
+        o.textContent = name;
+        ui.presetSel.appendChild(o);
+      });
+    }
+
+    function renderFrameText() {
+      const f = state.frames[state.frameIndex];
+      ui.frameText.textContent = `Frame: ${f?.frame ?? state.frameIndex}`;
+      ui.timeText.textContent = `Time: ${f?.timestamp || clockText(state.frameIndex)}`;
+      ui.frameSlider.value = String(state.frameIndex);
+    }
+
+    function render() {
+      drawPitch();
+      renderReadout();
+      renderHealth();
+      renderFrameText();
+      updateModeControlState();
+    }
+
+    function step(delta) {
+      state.frameIndex = Math.max(0, Math.min(state.frames.length - 1, state.frameIndex + delta));
+      render();
+    }
+
+    function play() {
+      if (state.playing) return;
+      state.playing = true;
+      state.playTimer = setInterval(() => {
+        if (state.frameIndex >= state.frames.length - 1) {
+          pause();
+          return;
+        }
+        state.frameIndex += 1;
+        render();
+      }, 100);
+    }
+
+    function pause() {
+      state.playing = false;
+      if (state.playTimer) clearInterval(state.playTimer);
+      state.playTimer = null;
+    }
+
+    function download(name, blob) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 500);
+    }
+
+    function exportRows() {
+      const selected = [...state.selectedMetrics];
+      const rows = [];
+
+      for (const p of state.playerList) {
+        for (let i = 0; i < state.frames.length; i += 1) {
+          const frame = state.frames[i];
+          const row = {
+            frame: frame.frame,
+            timestamp: frame.timestamp,
+            player_id: p.id,
+            player_name: p.name,
+            team_id: p.teamId,
+            period: frame.period,
+            phase: frame.period === 1 ? "first_half" : frame.period === 2 ? "second_half" : "other",
+          };
+          selected.forEach((mId) => {
+            row[mId] = state.metricData[p.id]?.[mId]?.[i] ?? 0;
+          });
+          row.compositeIndex = composite(p.id, i);
+          rows.push(row);
+        }
+      }
+
+      return rows;
+    }
+
+    function doCSV() {
+      const rows = exportRows();
+      if (!rows.length) return;
+      const headers = Object.keys(rows[0]);
+      const csv = [headers.join(",")]
+        .concat(rows.map((r) => headers.map((h) => JSON.stringify(r[h] ?? "")).join(",")))
+        .join("\n");
+      download("analytics_export.csv", new Blob([csv], { type: "text/csv" }));
+    }
+
+    function doXLSX() {
+      const rows = exportRows();
+      if (!rows.length || !window.XLSX) return;
+      const wb = XLSX.utils.book_new();
+
+      const byPlayer = {};
+      rows.forEach((r) => {
+        if (!byPlayer[r.player_name]) byPlayer[r.player_name] = [];
+        byPlayer[r.player_name].push(r);
+      });
+
+      const byPhase = {};
+      rows.forEach((r) => {
+        if (!byPhase[r.phase]) byPhase[r.phase] = [];
+        byPhase[r.phase].push(r);
+      });
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "all_metrics");
+      Object.entries(byPlayer).slice(0, 8).forEach(([name, data]) => {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), name.slice(0, 31));
+      });
+      Object.entries(byPhase).forEach(([phase, data]) => {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), phase.slice(0, 31));
+      });
+
+      XLSX.writeFile(wb, "analytics_export.xlsx");
+    }
+
+    function doJSONBundle() {
+      const payload = {
+        generatedAt: new Date().toISOString(),
+        selectedMetrics: [...state.selectedMetrics],
+        mode: state.mode,
+        weights: state.weights,
+        normalizers: state.normalizers,
+        frameIndex: state.frameIndex,
+        rows: exportRows(),
+      };
+      download("analytics_bundle.json", new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    }
+
+    function doPDF() {
+      if (!window.jspdf?.jsPDF) return;
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Advanced 2D Match Report", 14, 16);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`Generated: ${new Date().toLocaleString()}`, 14, 24);
+      pdf.text(`Mode: ${state.mode}`, 14, 31);
+      pdf.text(`Metrics: ${[...state.selectedMetrics].join(", ")}`, 14, 38, { maxWidth: 182 });
+
+      const ranking = state.playerList
+        .slice()
+        .sort((a, b) => composite(b.id, state.frameIndex) - composite(a.id, state.frameIndex))
+        .slice(0, 8);
+
+      pdf.text("Top composite performers at current frame:", 14, 50);
+      ranking.forEach((p, i) => {
+        pdf.text(`${i + 1}. ${p.name}  (${composite(p.id, state.frameIndex).toFixed(3)})`, 18, 58 + i * 7);
+      });
+
+      pdf.save("match_report.pdf");
+    }
+
+    function doHeatmapPNG() {
+      const dataURL = ui.pitchCanvas.toDataURL("image/png");
+      const parts = dataURL.split(",");
+      const mime = parts[0].match(/:(.*?);/)[1];
+      const bstr = atob(parts[1]);
+      let n = bstr.length;
+      const u8 = new Uint8Array(n);
+      while (n--) u8[n] = bstr.charCodeAt(n);
+      download("metric_heatmap.png", new Blob([u8], { type: mime }));
+    }
+
+    function readSessionBundle() {
+      try {
+        return JSON.parse(sessionStorage.getItem("anselmoUploadBundle") || "null");
+      } catch {
+        return null;
+      }
+    }
+
+    function readSessionScenario() {
+      try {
+        return JSON.parse(sessionStorage.getItem("anselmoScenarioConfig") || "null");
+      } catch {
+        return null;
+      }
+    }
+
+    function applyScenario(config) {
+      if (!config) return;
+
+      if (Array.isArray(config.metrics)) {
+        const valid = config.metrics.filter((id) => METRICS.some((m) => m.id === id));
+        if (valid.length) {
+          state.selectedMetrics = new Set(valid);
+        }
+      }
+
+      if (typeof config.mode === "string" && ["overlay", "composite", "comparative", "temporal"].includes(config.mode)) {
+        state.mode = config.mode;
+        ui.modeSel.value = config.mode;
+      }
+
+      if (typeof config.smoothWindow === "number" && Number.isFinite(config.smoothWindow)) {
+        state.smoothWindow = Math.max(1, Math.min(300, Math.floor(config.smoothWindow)));
+        ui.smoothWin.value = String(state.smoothWindow);
+      }
+
+      if (config.weights && typeof config.weights === "object") {
+        Object.entries(config.weights).forEach(([key, value]) => {
+          if (METRICS.some((m) => m.id === key) && Number.isFinite(Number(value))) {
+            state.weights[key] = Number(value);
+          }
+        });
+      }
+    }
+
+    async function onLoad(sourceBundle = null) {
+      pause();
+      setStatus("Loading files...", "");
+
+      try {
+        const uploadedMatch = ui.matchFile.files[0] || null;
+        const uploadedTracking = ui.trackingFile.files[0] || null;
+        const uploadedPitch = ui.pitchFile.files[0] || null;
+
+        const fromUploads = !!(uploadedMatch && uploadedTracking);
+        const fromInlineBundle = !!(sourceBundle && sourceBundle.match && sourceBundle.trackingText);
+        const fromUrlBundle = !!(sourceBundle && sourceBundle.matchUrl && sourceBundle.trackingUrl);
+
+        let match;
+        let trackingRaw;
+        let pitch;
+
+        if (fromUploads) {
+          setStatus("Reading uploaded files...", "");
+          const [matchText, trackingText, pitchData] = await Promise.all([
+            readFileAsText(uploadedMatch),
+            readFileAsText(uploadedTracking),
+            uploadedPitch ? readFileAsDataURL(uploadedPitch) : Promise.resolve(ui.pitchPath.value.trim()),
+          ]);
+
+          [match, pitch] = await Promise.all([
+            Promise.resolve(JSON.parse(matchText)),
+            loadImage(pitchData),
+          ]);
+          trackingRaw = parseJSONLText(trackingText);
+        } else if (fromInlineBundle) {
+          [match, pitch] = await Promise.all([
+            Promise.resolve(sourceBundle.match),
+            loadImage(sourceBundle.pitchDataUrl || ui.pitchPath.value.trim()),
+          ]);
+          trackingRaw = parseJSONLText(sourceBundle.trackingText);
+        } else {
+          const matchPath = fromUrlBundle ? sourceBundle.matchUrl : ui.matchPath.value.trim();
+          const trackingPath = fromUrlBundle ? sourceBundle.trackingUrl : ui.trackingPath.value.trim();
+          const pitchPath = fromUrlBundle ? (sourceBundle.pitchUrl || ui.pitchPath.value.trim()) : ui.pitchPath.value.trim();
+
+          [match, pitch] = await Promise.all([loadJSON(matchPath), loadImage(pitchPath)]);
+
+          let lastUpdate = 0;
+          setStatus("Streaming tracking JSONL...", "");
+          trackingRaw = await loadJSONLChunked(trackingPath, (p) => {
+            const now = Date.now();
+            if (!p.done && now - lastUpdate < 250) return;
+            lastUpdate = now;
+            const mb = (p.bytes / (1024 * 1024)).toFixed(2);
+            const totalMb = p.totalBytes ? (p.totalBytes / (1024 * 1024)).toFixed(2) : "?";
+            const tail = p.done ? "done" : `${mb}MB/${totalMb}MB`;
+            setStatus(`Streaming tracking JSONL... rows ${p.rows} (${tail})`, "");
+          });
+        }
+
+        const playersById = initPlayers(match);
+        const trackableMap = mapTrackableToPlayer(playersById);
+
+        const frames = remapTrackingPlayerIds(normalizeFrames(trackingRaw), trackableMap);
+
+        state.match = match;
+        state.frames = frames;
+        state.playersById = playersById;
+        state.playerList = Object.values(playersById).sort((a, b) => a.name.localeCompare(b.name));
+        state.homeTeamId = match.home_team?.id ?? null;
+        state.awayTeamId = match.away_team?.id ?? null;
+
+        // Use kit color from match JSON if present; otherwise keep whatever the user has in the picker (don't override with defaults)
+        const currentHome = ui.homeTeamColor.value;
+        const currentAway = ui.awayTeamColor.value;
+        const matchHomeColor = match.home_team_kit?.jersey_color || (currentHome !== "#808080" ? currentHome : null);
+        const matchAwayColor = match.away_team_kit?.jersey_color || (currentAway !== "#808080" ? currentAway : null);
+        const distinct = ensureDistinctTeamColors(matchHomeColor || "#808080", matchAwayColor || "#808080");
+        state.teamColors = {
+          [state.homeTeamId]: distinct.home,
+          [state.awayTeamId]: distinct.away,
+        };
+
+        if (state.homeTeamId != null) ui.homeTeamLabel.textContent = `${match.home_team?.name || "Home team"}`;
+        if (state.awayTeamId != null) ui.awayTeamLabel.textContent = `${match.away_team?.name || "Away team"}`;
+        // Only update picker if match JSON provided a color
+        if (match.home_team_kit?.jersey_color) ui.homeTeamColor.value = distinct.home;
+        if (match.away_team_kit?.jersey_color) ui.awayTeamColor.value = distinct.away;
+        updateTeamColorIndicators();
+
+        state.pitchImage = pitch;
+        state.pitchLength = Number(match.pitch_length) || 105;
+        state.pitchWidth = Number(match.pitch_width) || 68;
+        state.frameIndex = 0;
+
+        setStatus("Computing derived metrics in WebWorker...", "");
+        state.metricData = await computeMetrics();
+        buildNormalizers();
+
+        ui.frameSlider.max = String(Math.max(0, state.frames.length - 1));
+
+        renderPlayersSelects();
+        renderMetricGroups();
+        renderLayers();
+        renderWeights();
+        renderPresets();
+
+        const scenario = readSessionScenario();
+        applyScenario(scenario);
+        renderMetricGroups();
+        renderLayers();
+        renderWeights();
+
+        setStatus("Ready", "ok");
+        render();
+      } catch (err) {
+        console.error(err);
+        setStatus(`Error: ${err.message}`, "err");
+      }
+    }
+
+    function bind() {
+      ui.loadBtn.addEventListener("click", onLoad);
+
+      ui.metricSearch.addEventListener("input", renderMetricGroups);
+      ui.selectAllBtn.addEventListener("click", () => {
+        METRICS.forEach((m) => state.selectedMetrics.add(m.id));
+        state.mode = "composite";
+        ui.modeSel.value = "composite";
+        renderMetricGroups();
+        renderLayers();
+        renderWeights();
+        render();
+      });
+      ui.clearBtn.addEventListener("click", () => {
+        state.selectedMetrics.clear();
+        renderMetricGroups();
+        renderLayers();
+        renderWeights();
+        render();
+      });
+
+      ui.modeSel.addEventListener("change", () => {
+        state.mode = ui.modeSel.value;
+        render();
+      });
+      ui.comparisonVizMode.addEventListener("change", () => {
+        state.comparisonVizMode = ui.comparisonVizMode.value;
+        render();
+      });
+      ui.focusSel.addEventListener("change", () => {
+        state.focus = ui.focusSel.value;
+        render();
+      });
+      ui.compareASel.addEventListener("change", () => {
+        state.compareA = ui.compareASel.value;
+        if (state.mode !== "comparative") {
+          state.mode = "comparative";
+          ui.modeSel.value = "comparative";
+        }
+        render();
+      });
+      ui.compareBSel.addEventListener("change", () => {
+        state.compareB = ui.compareBSel.value;
+        if (state.mode !== "comparative") {
+          state.mode = "comparative";
+          ui.modeSel.value = "comparative";
+        }
+        render();
+      });
+      ui.smoothWin.addEventListener("change", () => {
+        state.smoothWindow = Math.max(1, Number(ui.smoothWin.value) || 20);
+        render();
+      });
+
+      ui.homeTeamColor.addEventListener("input", () => {
+        if (state.homeTeamId == null) return;
+        const distinct = ensureDistinctTeamColors(ui.homeTeamColor.value, ui.awayTeamColor.value);
+        ui.homeTeamColor.value = distinct.home;
+        ui.awayTeamColor.value = distinct.away;
+        state.teamColors[state.homeTeamId] = distinct.home;
+        if (state.awayTeamId != null) state.teamColors[state.awayTeamId] = distinct.away;
+        updateTeamColorIndicators();
+        render();
+      });
+
+      ui.awayTeamColor.addEventListener("input", () => {
+        if (state.awayTeamId == null) return;
+        const distinct = ensureDistinctTeamColors(ui.homeTeamColor.value, ui.awayTeamColor.value);
+        ui.homeTeamColor.value = distinct.home;
+        ui.awayTeamColor.value = distinct.away;
+        if (state.homeTeamId != null) state.teamColors[state.homeTeamId] = distinct.home;
+        state.teamColors[state.awayTeamId] = distinct.away;
+        updateTeamColorIndicators();
+        render();
+      });
+
+      ui.pitchMetricLabelMode.addEventListener("change", () => {
+        state.pitchMetricLabelMode = ui.pitchMetricLabelMode.value;
+        render();
+      });
+
+      ui.playBtn.addEventListener("click", play);
+      ui.pauseBtn.addEventListener("click", pause);
+      ui.back10Btn.addEventListener("click", () => step(-100));
+      ui.backBtn.addEventListener("click", () => step(-1));
+      ui.fwdBtn.addEventListener("click", () => step(1));
+      ui.fwd10Btn.addEventListener("click", () => step(100));
+      ui.frameSlider.addEventListener("input", () => {
+        state.frameIndex = Number(ui.frameSlider.value);
+        render();
+      });
+
+      ui.presetSel.addEventListener("change", () => {
+        const all = { ...PRESETS, ...getUserPresets() };
+        const metrics = all[ui.presetSel.value] || [];
+        state.selectedMetrics = new Set(metrics);
+        if (state.selectedMetrics.size === METRICS.length) {
+          state.mode = "composite";
+          ui.modeSel.value = "composite";
+        }
+        renderMetricGroups();
+        renderLayers();
+        renderWeights();
+        render();
+      });
+
+      ui.savePresetBtn.addEventListener("click", () => {
+        const name = prompt("Preset name");
+        if (!name) return;
+        const u = getUserPresets();
+        u[name] = [...state.selectedMetrics];
+        setUserPresets(u);
+        renderPresets();
+      });
+
+      ui.exportPresetBtn.addEventListener("click", () => {
+        const p = {
+          selectedMetrics: [...state.selectedMetrics],
+          mode: state.mode,
+          weights: state.weights,
+          focus: state.focus,
+        };
+        download("preset.json", new Blob([JSON.stringify(p, null, 2)], { type: "application/json" }));
+      });
+
+      ui.csvBtn.addEventListener("click", doCSV);
+      ui.xlsxBtn.addEventListener("click", doXLSX);
+      ui.jsonBtn.addEventListener("click", doJSONBundle);
+      ui.pdfBtn.addEventListener("click", doPDF);
+      ui.heatBtn.addEventListener("click", doHeatmapPNG);
+    }
+
+    function init() {
+      bind();
+      renderMetricGroups();
+      renderLayers();
+      renderWeights();
+      renderPresets();
+      updateTeamColorIndicators();
+      drawPitch();
+      updateModeControlState();
+
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("autoload") === "session") {
+        const bundle = readSessionBundle();
+        if ((bundle?.match && bundle?.trackingText) || (bundle?.matchUrl && bundle?.trackingUrl)) {
+          onLoad(bundle);
+        }
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

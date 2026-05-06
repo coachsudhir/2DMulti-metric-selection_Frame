@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Anselmo Scenario Dashboard</title>
+  <style>
+    :root {
+      --bg: #ebe6d8;
+      --ink: #201d16;
+      --muted: #645d50;
+      --line: #d4cab3;
+      --panel: #fffdf6;
+      --brand: #0c7a5f;
+      --danger: #b23a16;
+      --shadow: 0 12px 28px rgba(25, 23, 18, 0.09);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Manrope, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 20% 10%, #fff4cf 0%, #ebe6d8 46%, #e2dccb 100%);
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .hero {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(145deg, #fff8e7 0%, #f6f0e0 100%);
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.6rem;
+    }
+
+    .sub {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding: 12px;
+    }
+
+    .card h2 {
+      margin: 0 0 8px 0;
+      font-size: 1rem;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    input,
+    select,
+    button {
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 8px 10px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    input[type="file"] {
+      padding: 6px;
+      background: #fff;
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(180deg, #fff 0%, #f6f1e5 100%);
+    }
+
+    button:hover { border-color: var(--brand); }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .scenario {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #faf6eb;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    .scenario:hover {
+      transform: translateY(-1px);
+      border-color: var(--brand);
+    }
+
+    .scenario.active {
+      background: #dbf2eb;
+      border-color: var(--brand);
+    }
+
+    .scenario strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.9rem;
+    }
+
+    .scenario span {
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.35;
+      display: block;
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+
+    .status.ok { color: var(--brand); }
+    .status.err { color: var(--danger); }
+
+    .deploy {
+      margin-top: 12px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .scenario-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Anselmo Dashboard</h1>
+      <div class="sub">Upload tracking files, select analytics scenario, launch 2D advanced engine for execution and export.</div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>1) Upload Dataset</h2>
+
+        <label class="field">Match JSON
+          <input id="matchFile" type="file" accept=".json,application/json" />
+        </label>
+
+        <label class="field">Tracking JSONL
+          <input id="trackingFile" type="file" accept=".jsonl,.txt,application/json" />
+        </label>
+
+        <label class="field">Pitch image (optional)
+          <input id="pitchFile" type="file" accept="image/png,image/jpeg,image/webp" />
+        </label>
+
+        <label class="field">Rolling window for temporal mode
+          <input id="smoothWindow" type="number" min="1" max="300" value="20" />
+        </label>
+
+        <div class="row">
+          <button id="launchBtn">Launch Scenario</button>
+          <button id="launchDefaultsBtn">Open Engine With Local Defaults</button>
+        </div>
+
+        <div id="status" class="status">Waiting for upload and scenario selection.</div>
+      </article>
+
+      <article class="card">
+        <h2>2) Scenario Runner</h2>
+        <div id="scenarioGrid" class="scenario-grid"></div>
+
+        <div class="deploy">
+          Web upload ready: this dashboard sends your uploaded files via browser session storage to the 2D engine page, so it works on static hosting (no backend needed).
+        </div>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const scenarios = [
+      {
+        id: "speed",
+        name: "Speed Analysis",
+        desc: "Velocity, acceleration, deceleration, sprint intensity in overlay.",
+        mode: "overlay",
+        metrics: ["velocity", "acceleration", "deceleration", "sprintIntensity"],
+        weights: { velocity: 1.2, acceleration: 1.1, deceleration: 0.9, sprintIntensity: 1.4 },
+      },
+      {
+        id: "fatigue",
+        name: "Fatigue Monitoring",
+        desc: "Fatigue and workload profile for physical load management.",
+        mode: "composite",
+        metrics: ["fatigueIndex", "workRatePerMinute", "highIntensityIntervals", "idleTimeRatio"],
+        weights: { fatigueIndex: 1.5, workRatePerMinute: 1.2, highIntensityIntervals: 1.1, idleTimeRatio: 0.8 },
+      },
+      {
+        id: "tactical",
+        name: "Tactical Positioning",
+        desc: "Compactness, nearest opponent, transition speed, stability.",
+        mode: "overlay",
+        metrics: ["teamCompactnessScore", "distanceNearestOpponent", "transitionSpeed", "positionalStabilityIndex"],
+        weights: { teamCompactnessScore: 1.3, distanceNearestOpponent: 1.0, transitionSpeed: 1.1, positionalStabilityIndex: 1.2 },
+      },
+      {
+        id: "comparative",
+        name: "Player Comparative",
+        desc: "Player A vs B differential map using acceleration axis.",
+        mode: "comparative",
+        metrics: ["acceleration", "velocity"],
+        weights: { acceleration: 1.4, velocity: 1.0 },
+      },
+      {
+        id: "temporal",
+        name: "Temporal Evolution",
+        desc: "Trend-oriented timeline mode with smoothing for time windows.",
+        mode: "temporal",
+        metrics: ["velocity", "fatigueIndex", "workRatePerMinute", "heatIntensityScore"],
+        weights: { velocity: 1.1, fatigueIndex: 1.3, workRatePerMinute: 1.0, heatIntensityScore: 1.0 },
+      },
+      {
+        id: "full",
+        name: "Full Performance Scan",
+        desc: "All metrics selected with composite heatmap emphasis.",
+        mode: "composite",
+        metrics: [
+          "velocity", "acceleration", "deceleration", "deltaAngle", "distanceCovered", "sprintIntensity", "fatigueIndex", "workRatePerMinute", "highIntensityIntervals",
+          "pitchCoverageArea", "heatmapDensityScore", "positionalStabilityIndex", "averagePositionDrift",
+          "timeOnPitch", "activeTime", "idleTimeRatio", "timeInPossessionZone", "zoneTimeDef", "zoneTimeMid", "zoneTimeAtt",
+          "pressingIntensityIndex", "distanceNearestOpponent", "teamCompactnessScore", "transitionSpeed", "heatIntensityScore"
+        ],
+        weights: {},
+      },
+    ];
+
+    const els = {
+      matchFile: document.getElementById("matchFile"),
+      trackingFile: document.getElementById("trackingFile"),
+      pitchFile: document.getElementById("pitchFile"),
+      smoothWindow: document.getElementById("smoothWindow"),
+      launchBtn: document.getElementById("launchBtn"),
+      launchDefaultsBtn: document.getElementById("launchDefaultsBtn"),
+      scenarioGrid: document.getElementById("scenarioGrid"),
+      status: document.getElementById("status"),
+    };
+
+    let selectedScenario = scenarios[0];
+
+    function setStatus(msg, cls = "") {
+      els.status.textContent = msg;
+      els.status.className = `status ${cls}`;
+    }
+
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsText(file);
+      });
+    }
+
+    function readFileAsDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderScenarioCards() {
+      els.scenarioGrid.innerHTML = "";
+      scenarios.forEach((s) => {
+        const card = document.createElement("button");
+        card.className = `scenario${selectedScenario.id === s.id ? " active" : ""}`;
+        card.type = "button";
+        card.innerHTML = `<strong>${s.name}</strong><span>${s.desc}</span>`;
+        card.addEventListener("click", () => {
+          selectedScenario = s;
+          renderScenarioCards();
+          setStatus(`Scenario selected: ${s.name}`);
+        });
+        els.scenarioGrid.appendChild(card);
+      });
+    }
+
+    async function launchScenario() {
+      const matchFile = els.matchFile.files[0];
+      const trackingFile = els.trackingFile.files[0];
+      const pitchFile = els.pitchFile.files[0];
+
+      if (!matchFile || !trackingFile) {
+        setStatus("Please upload both Match JSON and Tracking JSONL.", "err");
+        return;
+      }
+
+      try {
+        setStatus("Preparing upload bundle...", "");
+
+        const matchUrl = URL.createObjectURL(matchFile);
+        const trackingUrl = URL.createObjectURL(trackingFile);
+        const pitchUrl = pitchFile ? URL.createObjectURL(pitchFile) : null;
+
+        const bundle = {
+          matchUrl,
+          trackingUrl,
+          pitchUrl,
+        };
+
+        const scenarioConfig = {
+          mode: selectedScenario.mode,
+          metrics: selectedScenario.metrics,
+          weights: selectedScenario.weights,
+          smoothWindow: Math.max(1, Math.min(300, Number(els.smoothWindow.value) || 20)),
+        };
+
+        sessionStorage.setItem("anselmoUploadBundle", JSON.stringify(bundle));
+        sessionStorage.setItem("anselmoScenarioConfig", JSON.stringify(scenarioConfig));
+
+        setStatus("Opening 2D engine with uploaded scenario... Keep this tab open while engine loads large files.", "ok");
+        window.open("frames_2d_advanced.html?autoload=session", "_blank", "noopener");
+      } catch (err) {
+        console.error(err);
+        setStatus(`Failed to launch: ${err.message}`, "err");
+      }
+    }
+
+    function launchDefaults() {
+      sessionStorage.removeItem("anselmoUploadBundle");
+      sessionStorage.removeItem("anselmoScenarioConfig");
+      window.open("frames_2d_advanced.html", "_blank", "noopener");
+    }
+
+    function bind() {
+      els.launchBtn.addEventListener("click", launchScenario);
+      els.launchDefaultsBtn.addEventListener("click", launchDefaults);
+    }
+
+    renderScenarioCards();
+    bind();
+  </script>
+</body>
+</html>

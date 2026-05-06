@@ -1,0 +1,2332 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tracking → Pitch Image → Preview + PDF + CSV + Play/Pause + Voronoi + Video + Labels + XLSX + 3D Drone</title>
+
+  <!-- jsPDF (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+  <!-- d3-delaunay for Voronoi (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/d3-delaunay@6.0.4/dist/d3-delaunay.min.js"></script>
+
+  <!-- ✅ SheetJS (XLSX export) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- ✅ 3D: THREE + OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; max-width: 1200px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+    label { display:block; font-size: 12px; color: #333; margin-bottom: 4px; }
+    input, select, button, textarea { padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; }
+    input[type="number"] { width: 90px; }
+    input[type="file"] { width: 320px; }
+    input[type="color"] { width: 56px; height: 38px; padding: 0; }
+    button { cursor: pointer; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .hint { font-size: 12px; color:#555; margin-top: 8px; line-height: 1.35; }
+    .status { margin-top: 10px; font-size: 12px; white-space: pre-wrap; }
+    canvas { margin-top: 12px; width: 100%; max-width: 1200px; border: 1px solid #ddd; border-radius: 10px; }
+    .small { font-size: 11px; color:#666; }
+    .tableWrap { margin-top: 14px; max-width: 1200px; }
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; }
+    th { background: #f6f6f6; text-align: left; }
+    .actions { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid #ddd; color:#333; background:#fafafa; }
+    .rightActions { display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap: wrap; }
+    a { color: inherit; }
+    textarea { width: 100%; max-width: 1200px; height: 140px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
+    .sectionTitle { margin-top: 16px; font-size: 12px; font-weight: 600; color:#333; }
+
+    .inlineField { display:flex; flex-direction:column; gap:4px; }
+    .inlineField label { margin: 0; }
+    .inlineField input[type="number"] { width: 110px; }
+
+    .timeMini { display:flex; gap:8px; align-items:flex-end; flex-wrap: wrap; }
+    .timeMini .inlineField input[type="number"] { width: 72px; }
+    .timeMini .inlineField select { width: 72px; }
+
+    .colorMini { display:flex; gap:8px; align-items:flex-end; flex-wrap: wrap; }
+    .colorMini .inlineField input[type="color"] { width: 48px; height: 34px; }
+
+    .videoAttach { margin-top: 12px; max-width: 1200px; border: 1px solid #ddd; border-radius: 10px; padding: 12px; }
+    .videoAttach video { width: 100%; max-width: 1200px; margin-top: 10px; border-radius: 10px; border: 1px solid #ddd; }
+    .videoControlsRow { display:flex; gap:10px; align-items:center; flex-wrap: wrap; margin-top: 10px; }
+
+    .toggleGroup { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .toggleGroup button[aria-pressed="true"] { border-color:#333; }
+
+    .modalBackdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.35);
+      display:none; align-items:center; justify-content:center; padding:18px; z-index:9999;
+    }
+    .modal{
+      width:min(820px, 96vw); max-height:85vh; overflow:auto;
+      background:#fff; border:1px solid #ddd; border-radius:14px; padding:14px;
+      box-shadow:0 14px 60px rgba(0,0,0,.2);
+    }
+    .modal h3{ margin:0 0 8px 0; font-size:14px; }
+    .modal .grid{
+      display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap:8px; margin-top:8px;
+    }
+    .chk{
+      display:flex; gap:8px; align-items:center;
+      border:1px solid #eee; border-radius:12px; padding:8px 10px;
+      background:#fafafa;
+    }
+    .chk input{ transform: translateY(1px); }
+    .modalActions{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-top:12px; }
+    .miniBtns{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .segTitle{ margin-top:10px; font-size:12px; font-weight:600; color:#333; }
+
+    /* ✅ 3D */
+    .threeWrap{
+      margin-top: 12px;
+      max-width: 1200px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #111;
+    }
+    .threeHeader{
+      padding: 10px 12px;
+      background: #fafafa;
+      border-bottom: 1px solid #ddd;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .threeHeader .small{ margin:0; }
+    #threeContainer{
+      width: 100%;
+      height: 520px;
+      display:block;
+      position:relative;
+
+      /* ✅ Crucial para táctil (Surface/Chrome): deja que el canvas capture el gesto */
+      touch-action: none;
+      -ms-touch-action: none;
+      overscroll-behavior: contain;
+    }
+
+    /* ✅ Controles debajo del 3D */
+    .threeControls{
+      background:#fafafa;
+      border-top:1px solid #ddd;
+      padding:10px 12px;
+      display:flex;
+      gap:12px;
+      align-items:flex-end;
+      flex-wrap:wrap;
+    }
+    .threeControls .inlineField input[type="number"]{ width: 120px; }
+    .threeControls .badge { align-self:center; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>1) Metadatos (match.json)</label>
+        <input id="matchFile" type="file" accept=".json,application/json" />
+      </div>
+
+      <div>
+        <label>2) Tracking (posicionales .jsonl)</label>
+        <input id="trackingFile" type="file" accept=".jsonl,.txt,application/json" />
+      </div>
+
+      <div>
+        <label>3) Imagen de campo (png/jpg)</label>
+        <input id="pitchImgFile" type="file" accept="image/png,image/jpeg" />
+      </div>
+
+      <div>
+        <label>Periodo</label>
+        <select id="period">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Min</label>
+        <input id="min" type="number" step="1" value="10" />
+      </div>
+      <div>
+        <label>Seg</label>
+        <input id="sec" type="number" step="1" value="0" />
+      </div>
+      <div>
+        <label>Décima (0–9)</label>
+        <input id="tenth" type="number" step="1" value="0" />
+      </div>
+
+      <div>
+        <label>Color local</label>
+        <input id="homeColor" type="color" value="#0066ff" />
+      </div>
+      <div>
+        <label>Color visitante</label>
+        <input id="awayColor" type="color" value="#ff2b2b" />
+      </div>
+
+      <div class="actions">
+        <button id="okBtn">OK → Hacer PDF</button>
+        <button id="plusBtn" title="+0,10s">+0,10s</button>
+        <button id="minusBtn" title="-0,10s">-0,10s</button>
+        <button id="playBtn" title="Play (avanza +0,10s cada 0,10s)">▶ Play</button>
+        <button id="pauseBtn" title="Pause">⏸ Pause</button>
+        <span id="playStatus" class="badge">Play: parado</span>
+      </div>
+    </div>
+
+    <div class="hint">
+      - Datos cada <b>0,10s</b> (10 Hz) → 1 décima = 1 frame.<br/>
+      - Transformación: <b>x + 52,5</b> y <b>y + 34</b>.<br/>
+      - Los botones <b>+0,10s</b> y <b>-0,10s</b> actualizan la vista (sin generar PDF).<br/>
+      - <b>Play</b>: avanza <b>+0,10s cada 0,10s</b> durante <b>2 minutos</b> (1200 pasos). <b>Pause</b> lo detiene.
+      <div class="small">En Play se usa streaming secuencial del .jsonl para mantener sincronía incluso en minutos altos.</div>
+      <div class="small"><b>Vídeo adjunto (manual):</b> tiene su propio visor de tiempo (con décimas) y NO se sincroniza por tiempo con Voronoi/coordenadas. Aun así, recibe las acciones de ▶/⏸ y ±0,10s cuando las haces en los controles del tracking.</div>
+    </div>
+
+    <div id="status" class="status"></div>
+  </div>
+
+  <canvas id="pitchCanvas" width="1400" height="907"></canvas>
+  <canvas id="pitchCanvasVor" width="1400" height="907"></canvas>
+
+  <!-- ✅ 3D -->
+  <div class="threeWrap">
+    <div class="threeHeader">
+      <div>
+        <div class="sectionTitle" style="margin-top:0;">Vista 3D (dron) — campo 105×68</div>
+        <div class="small">Control: arrastrar = rotar · rueda = zoom · botón derecho = desplazar. Jugadores = 1,80 m aprox.</div>
+      </div>
+      <div class="small" id="threeStatus">3D: inicializando…</div>
+    </div>
+
+    <div id="threeContainer"></div>
+
+    <div class="threeControls">
+      <button id="rec3dBtn" title="Graba un vídeo del 3D usando Duración (s)">⏺ REC 3D</button>
+      <span class="badge" id="rec3dBadge">REC 3D: parado</span>
+
+      <div class="inlineField">
+        <label>X</label>
+        <input id="camX" type="number" step="0.1" value="0" />
+      </div>
+      <div class="inlineField">
+        <label>Y</label>
+        <input id="camY" type="number" step="0.1" value="0" />
+      </div>
+      <div class="inlineField">
+        <label>Z</label>
+        <input id="camZ" type="number" step="0.1" value="0" />
+      </div>
+
+      <div class="inlineField">
+        <label>Zoom</label>
+        <input id="camZoom" type="number" min="1" step="1" value="90" />
+      </div>
+
+      <div class="inlineField">
+        <label>Áng. horiz</label>
+        <input id="camYaw" type="number" min="0" max="360" step="1" value="45" />
+      </div>
+
+      <div class="inlineField">
+        <label>Áng. vert</label>
+        <input id="camPitch" type="number" min="0" max="360" step="1" value="25" />
+      </div>
+
+      <span class="small" id="camHint">Sincronizado con el ratón (OrbitControls).</span>
+    </div>
+  </div>
+
+  <!-- ✅ Controles debajo -->
+  <div class="tableWrap">
+    <div class="row" style="justify-content: space-between; align-items:center;">
+      <div>
+        <div class="small">Controles Voronoi (tiempo/colores/vídeo/CSV/XLSX):</div>
+      </div>
+
+      <div class="rightActions">
+        <div class="timeMini" title="Tiempo (editable, sincronizado)">
+          <div class="inlineField">
+            <label>Periodo</label>
+            <select id="period2">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </div>
+          <div class="inlineField">
+            <label>Min</label>
+            <input id="min2" type="number" step="1" value="10" />
+          </div>
+          <div class="inlineField">
+            <label>Seg</label>
+            <input id="sec2" type="number" step="1" value="0" />
+          </div>
+          <div class="inlineField">
+            <label>Déc.</label>
+            <input id="tenth2" type="number" step="1" value="0" />
+          </div>
+          <span id="tsBadge2" class="badge">⏱ 10:00.0</span>
+        </div>
+
+        <div class="colorMini" title="Colores (editables, sincronizados)">
+          <div class="inlineField">
+            <label>Local</label>
+            <input id="homeColor2" type="color" value="#0066ff" />
+          </div>
+          <div class="inlineField">
+            <label>Visit.</label>
+            <input id="awayColor2" type="color" value="#ff2b2b" />
+          </div>
+        </div>
+
+        <div class="inlineField">
+          <label for="videoDuration">Duración (s)</label>
+          <input id="videoDuration" type="number" min="1" step="1" value="10" />
+        </div>
+
+        <button id="videoPlainBtn" title="Genera un vídeo (sin Voronoi) desde el frame actual">🎥 Vídeo</button>
+        <button id="videoVorBtn" title="Genera un vídeo Voronoi desde el frame actual">🎥 Vídeo Voronoi</button>
+
+        <button id="plusBtn2" title="+0,10s">+0,10s</button>
+        <button id="minusBtn2" title="-0,10s">-0,10s</button>
+
+        <button id="playBtn2" title="Play (avanza +0,10s cada 0,10s)">▶ Play</button>
+        <button id="pauseBtn2" title="Pause">⏸ Pause</button>
+
+        <button id="csvBtn" disabled>CSV</button>
+        <button id="xlsxPosBtn" disabled>⬇️ XLSX Pos</button>
+        <button id="xlsxPhysBtn" disabled>⬇️ XLSX Fís</button>
+      </div>
+    </div>
+
+    <div class="videoAttach">
+      <div class="row" style="align-items:flex-end;">
+        <div>
+          <div class="sectionTitle" style="margin-top:0;">Vídeo adjunto (manual) DESINCRONIZADO</div>
+          <div class="small">
+            Tiene su propio tiempo (con décimas). No se sincroniza por tiempo con Voronoi/coordenadas.
+            <span class="small" style="margin-left:8px;">Pero recibe ▶/⏸ y ±0,10s desde los controles del tracking.</span>
+          </div>
+        </div>
+        <div>
+          <label>Adjuntar vídeo</label>
+          <input id="manualVideoFile" type="file" accept="video/*" />
+        </div>
+      </div>
+
+      <video id="manualVideoPlayer" controls playsinline preload="metadata"></video>
+
+      <div class="videoControlsRow">
+        <button id="manualMinusBtn" title="Solo vídeo manual: -0,10s">-0,10s</button>
+        <button id="manualPlusBtn" title="Solo vídeo manual: +0,10s">+0,10s</button>
+        <span id="manualTsBadge" class="badge">🎬 00:00.0</span>
+        <span class="small" id="videoSyncHint" style="display:none;">
+          Tip: si al hacer ▶ Play no se reproduce por políticas del navegador, pulsa Play en el vídeo una vez.
+        </span>
+      </div>
+    </div>
+
+    <div id="csvFallback" class="small" style="display:none; margin-top:6px;">
+      Descarga bloqueada por el iframe. Prueba:
+      <a id="csvLink" target="_blank" rel="noopener">Abrir CSV</a>
+      <span> o copia/pega el contenido de abajo en un .csv.</span>
+    </div>
+
+    <div id="videoFallback" class="small" style="display:none; margin-top:6px;">
+      Export bloqueado por el iframe. Prueba:
+      <a id="videoLink" target="_blank" rel="noopener">Abrir vídeo</a>
+    </div>
+
+    <div id="video3dFallback" class="small" style="display:none; margin-top:6px;">
+      Export 3D bloqueado por el iframe. Prueba:
+      <a id="video3dLink" target="_blank" rel="noopener">Abrir vídeo 3D</a>
+    </div>
+
+    <div id="tableContainer" style="margin-top:10px;"></div>
+
+    <div id="csvTextWrap" style="display:none; margin-top:10px;">
+      <div class="small" style="margin-bottom:6px;">CSV generado (si no descarga, copia todo y pégalo en un archivo .csv):</div>
+      <textarea id="csvText" spellcheck="false"></textarea>
+    </div>
+
+    <div class="sectionTitle">Tabla simple (Nombre, X, Y)</div>
+    <div id="tableSimpleContainer" style="margin-top:8px;"></div>
+  </div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $("status");
+
+  const canvas = $("pitchCanvas");
+  const ctx = canvas.getContext("2d");
+
+  const canvasVor = $("pitchCanvasVor");
+  const ctxVor = canvasVor.getContext("2d");
+
+  const pitchW = 105, pitchH = 68;
+
+  let pitchImg = null;
+  let matchDataCache = null;
+
+  let lastTableRows = null;
+  let lastTimestampStr = null;
+
+  let playTimerId = null;
+  let playStepsLeft = 0;
+  let playLastTick = 0;
+
+  let currentCsvBlobUrl = null;
+  let currentVideoBlobUrl = null;
+  let current3DVideoBlobUrl = null;
+
+  let isRecording = false;
+  let isRecording3D = false;
+
+  let manualVideoBlobUrl = null;
+  let manualVideoSeekDebounce = null;
+
+  let manualVideoPlayAnchorTime = 0;
+  let manualVideoPlayElapsedTenths = 0;
+
+  let syncingTime = false;
+
+  const playStream = {
+    reader: null,
+    decoder: null,
+    buffer: "",
+    file: null,
+    active: false,
+    matchData: null,
+    lastObj: null
+  };
+
+  let labelMode = "name";
+  let selectedPlayerIds = null;
+  let showBall = true;
+
+  const frameCache = new Map();
+  function cacheFrameObj(obj){
+    if (!obj || typeof obj.frame !== "number") return;
+    frameCache.set(obj.frame, obj);
+    if (frameCache.size > 8){
+      const keys = Array.from(frameCache.keys()).sort((a,b)=>a-b);
+      while (frameCache.size > 8) frameCache.delete(keys.shift());
+    }
+  }
+
+  const smoothState = new Map();
+  const DT = 0.1;
+
+  function log(msg) { statusEl.textContent = msg; }
+
+  // =========================
+  // ✅ 3D (THREE.js) — DRONE
+  // =========================
+  const three = {
+    ready: false,
+    scene: null,
+    camera: null,
+    renderer: null,
+    controls: null,
+    container: null,
+    players: new Map(),
+    ball: null,
+    goals: [],
+    _camSyncing: false,
+    _camInputsWired: false
+  };
+
+  // ✅ Balón: radio + altura solo balón (Z del JSONL)
+  const BALL_RADIUS = 0.11;
+
+  function getBallHeightMeters(ballData){
+    if (!ballData) return 0;
+    const candidates = [ ballData.z, ballData.Z, ballData.height, ballData.h, ballData.altura ];
+    for (const v of candidates){
+      const n = Number(v);
+      if (isFinite(n)) return n;
+    }
+    return 0;
+  }
+
+  function hexToThreeColor(hex){
+    try { return new THREE.Color(hex); } catch(e){ return new THREE.Color("#ffffff"); }
+  }
+
+  function makePitchTexture(){
+    const w = 1024, h = 1024 * (pitchH/pitchW);
+    const c = document.createElement("canvas");
+    c.width = w; c.height = Math.max(256, Math.round(h));
+    const g = c.getContext("2d");
+
+    g.fillStyle = "#0b7a2a";
+    g.fillRect(0,0,c.width,c.height);
+
+    const lw = 6;
+    g.strokeStyle = "rgba(255,255,255,0.92)";
+    g.lineWidth = lw;
+
+    g.strokeRect(lw/2, lw/2, c.width-lw, c.height-lw);
+
+    g.beginPath();
+    g.moveTo(c.width/2, 0);
+    g.lineTo(c.width/2, c.height);
+    g.stroke();
+
+    const cx = c.width/2, cy = c.height/2;
+    const r = (c.height/2) * (9.15/34);
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI*2);
+    g.stroke();
+
+    g.fillStyle = "rgba(255,255,255,0.92)";
+    g.beginPath();
+    g.arc(cx, cy, lw, 0, Math.PI*2);
+    g.fill();
+
+    function rectMeters(xFromLeftM, yFromBottomM, wM, hM){
+      const px = (xFromLeftM / pitchW) * c.width;
+      const py = c.height - ((yFromBottomM + hM) / pitchH) * c.height;
+      const pw = (wM / pitchW) * c.width;
+      const ph = (hM / pitchH) * c.height;
+      g.strokeRect(px, py, pw, ph);
+    }
+
+    rectMeters(0, (pitchH-40.32)/2, 16.5, 40.32);
+    rectMeters(pitchW-16.5, (pitchH-40.32)/2, 16.5, 40.32);
+
+    rectMeters(0, (pitchH-18.32)/2, 5.5, 18.32);
+    rectMeters(pitchW-5.5, (pitchH-18.32)/2, 5.5, 18.32);
+
+    function dotMeters(xFromLeftM, yFromBottomM){
+      const px = (xFromLeftM / pitchW) * c.width;
+      const py = c.height - (yFromBottomM / pitchH) * c.height;
+      g.beginPath();
+      g.arc(px, py, lw, 0, Math.PI*2);
+      g.fill();
+    }
+    dotMeters(11, pitchH/2);
+    dotMeters(pitchW-11, pitchH/2);
+
+    function drawPenaltyArc(centerX, centerY, towardPositiveX){
+      const Rm = 9.15;
+      const areaLineX = towardPositiveX ? 16.5 : (pitchW - 16.5);
+      const dx = areaLineX - centerX;
+      const inside = (Rm*Rm) - (dx*dx);
+      if (inside <= 0) return;
+      const dy = Math.sqrt(inside);
+
+      const scale = c.width / pitchW;
+      const cxp = (centerX / pitchW) * c.width;
+      const cyp = c.height - (centerY / pitchH) * c.height;
+      const Rp = Rm * scale;
+
+      const theta = Math.atan2(dy, Math.abs(dx));
+      let a0, a1;
+      if (towardPositiveX){
+        a0 = -theta; a1 = +theta;
+      } else {
+        a0 = Math.PI - theta; a1 = Math.PI + theta;
+      }
+      g.beginPath();
+      g.arc(cxp, cyp, Rp, a0, a1, false);
+      g.stroke();
+    }
+
+    drawPenaltyArc(11, pitchH/2, true);
+    drawPenaltyArc(pitchW-11, pitchH/2, false);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 8;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  function addGoals3D(scene){
+    const goalH = 2.44;
+    const goalW = 7.32;
+    const halfW = goalW / 2;
+    const postR = 0.06;
+    const netDepth = 2.0;
+
+    const postMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.0 });
+    const netMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.14, wireframe: true,
+      depthWrite: false, side: THREE.DoubleSide
+    });
+
+    function buildGoalAtX(goalLineX, outwardSign){
+      const g = new THREE.Group();
+
+      const postGeo = new THREE.CylinderGeometry(postR, postR, goalH, 16);
+      const leftPost = new THREE.Mesh(postGeo, postMat);
+      leftPost.position.set(goalLineX, goalH/2, -halfW);
+      g.add(leftPost);
+
+      const rightPost = new THREE.Mesh(postGeo, postMat);
+      rightPost.position.set(goalLineX, goalH/2, +halfW);
+      g.add(rightPost);
+
+      const barGeo = new THREE.CylinderGeometry(postR, postR, goalW, 16);
+      const bar = new THREE.Mesh(barGeo, postMat);
+      bar.rotation.x = Math.PI/2;
+      bar.position.set(goalLineX, goalH, 0);
+      g.add(bar);
+
+      const backBar = new THREE.Mesh(barGeo, postMat);
+      backBar.rotation.x = Math.PI/2;
+      backBar.position.set(goalLineX + outwardSign * netDepth, goalH, 0);
+      g.add(backBar);
+
+      const backLeft = new THREE.Mesh(postGeo, postMat);
+      backLeft.position.set(goalLineX + outwardSign * netDepth, goalH/2, -halfW);
+      g.add(backLeft);
+
+      const backRight = new THREE.Mesh(postGeo, postMat);
+      backRight.position.set(goalLineX + outwardSign * netDepth, goalH/2, +halfW);
+      g.add(backRight);
+
+      const lowBar = new THREE.Mesh(barGeo, postMat);
+      lowBar.rotation.x = Math.PI/2;
+      lowBar.position.set(goalLineX + outwardSign * netDepth, postR, 0);
+      g.add(lowBar);
+
+      const netGeo = new THREE.BoxGeometry(netDepth, goalH, goalW);
+      const net = new THREE.Mesh(netGeo, netMat);
+      net.position.set(goalLineX + outwardSign * (netDepth/2), goalH/2, 0);
+      g.add(net);
+
+      g.position.y = 0.01;
+
+      scene.add(g);
+      three.goals.push(g);
+    }
+
+    buildGoalAtX(-pitchW/2, -1);
+    buildGoalAtX(+pitchW/2, +1);
+  }
+
+  function init3DCameraUI(){
+    if (three._camInputsWired) return;
+    const xIn = $("camX"), yIn = $("camY"), zIn = $("camZ");
+    const zoomIn = $("camZoom"), yawIn = $("camYaw"), pitchIn = $("camPitch");
+    if (!xIn || !yIn || !zIn || !zoomIn || !yawIn || !pitchIn) return;
+
+    function clamp360(v){
+      let a = (isFinite(v) ? v : 0);
+      a = ((a % 360) + 360) % 360;
+      return a;
+    }
+
+    function syncInputsFromControls(){
+      if (!three.ready || !three.controls || !three.camera) return;
+      if (three._camSyncing) return;
+      three._camSyncing = true;
+      try{
+        const t = three.controls.target;
+        const cam = three.camera;
+        const dx = cam.position.x - t.x;
+        const dy = cam.position.y - t.y;
+        const dz = cam.position.z - t.z;
+        const dist = Math.max(0.0001, Math.hypot(dx, dy, dz));
+        const yaw = clamp360((Math.atan2(dz, dx) * 180 / Math.PI));
+        const pitch = clamp360((Math.atan2(dy, Math.hypot(dx, dz)) * 180 / Math.PI));
+
+        xIn.value = (t.x).toFixed(1);
+        yIn.value = (t.y).toFixed(1);
+        zIn.value = (t.z).toFixed(1);
+        zoomIn.value = String(Math.max(1, Math.round(dist)));
+        yawIn.value = String(Math.round(yaw));
+        pitchIn.value = String(Math.round(pitch));
+      } finally {
+        three._camSyncing = false;
+      }
+    }
+
+    function applyInputsToControls(){
+      if (!three.ready || !three.controls || !three.camera) return;
+      if (three._camSyncing) return;
+
+      three._camSyncing = true;
+      try{
+        const tx = parseFloat(xIn.value);
+        const ty = parseFloat(yIn.value);
+        const tz = parseFloat(zIn.value);
+        const dist = Math.max(1, parseFloat(zoomIn.value));
+
+        const yawDeg = clamp360(parseFloat(yawIn.value));
+        const pitchDeg = clamp360(parseFloat(pitchIn.value));
+
+        let pitch = pitchDeg;
+        if (pitch > 180) pitch = pitch - 360;
+
+        const yawRad = yawDeg * Math.PI/180;
+        const pitchRad = pitch * Math.PI/180;
+
+        const cosE = Math.cos(pitchRad);
+        const sinE = Math.sin(pitchRad);
+
+        const px = (isFinite(tx) ? tx : 0) + (cosE * Math.cos(yawRad)) * dist;
+        const py = (isFinite(ty) ? ty : 0) + (sinE) * dist;
+        const pz = (isFinite(tz) ? tz : 0) + (cosE * Math.sin(yawRad)) * dist;
+
+        three.controls.target.set(isFinite(tx)?tx:0, isFinite(ty)?ty:0, isFinite(tz)?tz:0);
+        three.camera.position.set(px, py, pz);
+        three.controls.update();
+      } finally {
+        three._camSyncing = false;
+      }
+    }
+
+    [xIn,yIn,zIn,zoomIn,yawIn,pitchIn].forEach(inp => {
+      inp.addEventListener("input", applyInputsToControls);
+      inp.addEventListener("change", applyInputsToControls);
+    });
+
+    three.controls.addEventListener("change", syncInputsFromControls);
+    syncInputsFromControls();
+    three._camInputsWired = true;
+  }
+
+  function init3D(){
+    const status = $("threeStatus");
+    const container = $("threeContainer");
+
+    if (!container) { if (status) status.textContent = "3D: no hay contenedor."; return; }
+    if (!window.THREE) { if (status) status.textContent = "3D: THREE no cargó."; return; }
+    if (!THREE.OrbitControls) { if (status) status.textContent = "3D: OrbitControls no cargó."; return; }
+
+    three.container = container;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#e6e6e6"); // gris claro tenue
+
+    const w = container.clientWidth || 800;
+    const h = container.clientHeight || 520;
+
+    const camera = new THREE.PerspectiveCamera(55, w/h, 0.1, 500);
+    camera.position.set(35, 55, 55);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    container.appendChild(renderer.domElement);
+
+    // ✅ CLAVE Surface/Chrome táctil: deja que OrbitControls reciba pinch
+    renderer.domElement.style.touchAction = "none";
+    renderer.domElement.style.msTouchAction = "none";
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.enablePan = true;
+    controls.enableZoom = true;
+    controls.minDistance = 15;
+    controls.maxDistance = 200;
+    controls.maxPolarAngle = Math.PI * 0.49;
+    controls.target.set(0, 0, 0);
+
+    // ✅ Forzar mapeo táctil (pinch = dolly/zoom)
+    controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN
+    };
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x223344, 0.9);
+    scene.add(hemi);
+
+    const dir = new THREE.DirectionalLight(0xffffff, 0.95);
+    dir.position.set(30, 80, 40);
+    scene.add(dir);
+
+    const pitchGeo = new THREE.PlaneGeometry(pitchW, pitchH, 1, 1);
+    const pitchMat = new THREE.MeshStandardMaterial({
+      map: makePitchTexture(),
+      roughness: 1,
+      metalness: 0
+    });
+    const pitchMesh = new THREE.Mesh(pitchGeo, pitchMat);
+    pitchMesh.rotation.x = -Math.PI/2;
+    pitchMesh.position.y = 0;
+    scene.add(pitchMesh);
+
+    const borderGeo = new THREE.PlaneGeometry(pitchW+2, pitchH+2, 1, 1);
+    const borderMat = new THREE.MeshStandardMaterial({ color: 0x0a5a20, roughness: 1 });
+    const borderMesh = new THREE.Mesh(borderGeo, borderMat);
+    borderMesh.rotation.x = -Math.PI/2;
+    borderMesh.position.y = -0.02;
+    scene.add(borderMesh);
+
+    addGoals3D(scene);
+
+    three.scene = scene;
+    three.camera = camera;
+    three.renderer = renderer;
+    three.controls = controls;
+    three.ready = true;
+
+    const ro = new ResizeObserver(() => {
+      if (!three.ready) return;
+      const ww = container.clientWidth || 800;
+      const hh = container.clientHeight || 520;
+      three.camera.aspect = ww / hh;
+      three.camera.updateProjectionMatrix();
+      three.renderer.setSize(ww, hh);
+    });
+    ro.observe(container);
+
+    function animate(){
+      if (!three.ready) return;
+      requestAnimationFrame(animate);
+      three.controls.update();
+      three.renderer.render(three.scene, three.camera);
+    }
+    animate();
+
+    init3DCameraUI();
+
+    if (status) status.textContent = "3D: listo (OrbitControls + táctil).";
+  }
+
+  function buildPlayer3D(colorHex){
+    const group = new THREE.Group();
+
+    const bodyH = 1.45;
+    const headR = 0.18;
+    const bodyR = 0.23;
+
+    const mat = new THREE.MeshStandardMaterial({
+      color: hexToThreeColor(colorHex),
+      roughness: 0.75,
+      metalness: 0.0
+    });
+
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(bodyR, bodyR, bodyH, 18),
+      mat
+    );
+    body.position.y = bodyH/2;
+    group.add(body);
+
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(headR, 18, 14),
+      new THREE.MeshStandardMaterial({ color: 0xf0d7c0, roughness: 0.9 })
+    );
+    head.position.y = bodyH + headR;
+    group.add(head);
+
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.33, 22),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 })
+    );
+    shadow.rotation.x = -Math.PI/2;
+    shadow.position.y = 0.01;
+    group.add(shadow);
+
+    return group;
+  }
+
+  function ensure3DPlayer(pid, colorHex){
+    let g = three.players.get(pid);
+    if (!g){
+      g = buildPlayer3D(colorHex);
+      three.scene.add(g);
+      three.players.set(pid, g);
+    } else {
+      const body = g.children.find(ch => ch.geometry && ch.geometry.type === "CylinderGeometry");
+      if (body && body.material && body.material.color) body.material.color = hexToThreeColor(colorHex);
+    }
+    return g;
+  }
+
+  // ✅ Balón blanco con borde negro (wireframe) — el grupo se mueve con position.set(...)
+  function ensure3DBall(){
+    if (three.ball) return three.ball;
+
+    const g = new THREE.Group();
+
+    const ballWhite = new THREE.Mesh(
+      new THREE.SphereGeometry(BALL_RADIUS, 24, 18),
+      new THREE.MeshStandardMaterial({
+        color: 0xf2f2f2,
+        roughness: 0.5,
+        metalness: 0.0
+      })
+    );
+    g.add(ballWhite);
+
+    const outline = new THREE.Mesh(
+      new THREE.SphereGeometry(BALL_RADIUS * 1.06, 24, 18),
+      new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.95,
+        depthWrite: false
+      })
+    );
+    g.add(outline);
+
+    g.position.set(0, BALL_RADIUS, 0);
+
+    three.scene.add(g);
+    three.ball = g;
+    return g;
+  }
+
+  function hideUnusedPlayers(activeSet){
+    for (const [pid, g] of three.players.entries()){
+      g.visible = activeSet.has(pid);
+    }
+  }
+
+  function update3D(matchData, frameObj, colors){
+    if (!three.ready || !matchData || !frameObj) return;
+
+    const homeId = matchData.home_team?.id;
+    const active = new Set();
+
+    if (!matchData.__pidTeamMap){
+      const m = new Map();
+      for (const p of (matchData.players || [])) m.set(p.id, p.team_id);
+      matchData.__pidTeamMap = m;
+    }
+    const pidTeam = matchData.__pidTeamMap;
+
+    for (const pl of (frameObj.player_data || [])){
+      if (pl.x == null || pl.y == null) continue;
+      if (selectedPlayerIds && !selectedPlayerIds.has(pl.player_id)) continue;
+
+      const teamId = pidTeam.get(pl.player_id);
+      if (teamId == null) continue;
+
+      const isHome = (teamId === homeId);
+      const cHex = isHome ? (colors.home || "#0066ff") : (colors.away || "#ff2b2b");
+
+      const g = ensure3DPlayer(pl.player_id, cHex);
+      g.position.set(pl.x, 0, -pl.y);
+
+      active.add(pl.player_id);
+    }
+
+    hideUnusedPlayers(active);
+
+    const b = frameObj.ball_data || {};
+    if (showBall && b.x != null && b.y != null){
+      const ball = ensure3DBall();
+      ball.visible = true;
+
+      const h = getBallHeightMeters(b);
+      const y3d = Math.max(BALL_RADIUS, h + BALL_RADIUS);
+
+      ball.position.set(b.x, y3d, -b.y);
+    } else if (three.ball){
+      three.ball.visible = false;
+    }
+
+    const s = $("threeStatus");
+    if (s) s.textContent = `3D: actualizado (${active.size} jugadores${showBall ? " + balón" : ""})`;
+  }
+
+  // ---- Sync colors ----
+  function setColorInputs({ home, away }, source = "top") {
+    const hc = home || "#0066ff";
+    const ac = away || "#ff2b2b";
+    if (source !== "top") {
+      if ($("homeColor")) $("homeColor").value = hc;
+      if ($("awayColor")) $("awayColor").value = ac;
+    }
+    if (source !== "bottom") {
+      if ($("homeColor2")) $("homeColor2").value = hc;
+      if ($("awayColor2")) $("awayColor2").value = ac;
+    }
+  }
+
+  function getColors() {
+    return {
+      home: $("homeColor")?.value || $("homeColor2")?.value || "#0066ff",
+      away: $("awayColor")?.value || $("awayColor2")?.value || "#ff2b2b"
+    };
+  }
+
+  function getVideoDurationSeconds() {
+    const raw = parseInt(($("videoDuration")?.value ?? "10"), 10);
+    const s = (isFinite(raw) ? raw : 10);
+    return Math.max(1, s);
+  }
+
+  function numToComma(n, decimals = 2) {
+    if (n == null || !isFinite(n)) return "";
+    return Number(n).toFixed(decimals).replace(".", ",");
+  }
+
+  function fmtTimestamp(min, sec, tenth){
+    const mm = String(min).padStart(2,"0");
+    const ss = String(sec).padStart(2,"0");
+    return `${mm}:${ss}.${tenth}`;
+  }
+
+  function fmtVideoTimestamp(totalSeconds){
+    const tenthsTotal = Math.max(0, Math.round((totalSeconds || 0) * 10));
+    const min = Math.floor(tenthsTotal / 600);
+    const rem = tenthsTotal % 600;
+    const sec = Math.floor(rem / 10);
+    const tenth = rem % 10;
+    return fmtTimestamp(min, sec, tenth);
+  }
+
+  function lastWord(s) {
+    if (!s) return "";
+    const parts = String(s).trim().split(/\s+/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : "";
+  }
+
+  function hexToRgbArray(hex) {
+    const h = hex.replace("#","").trim();
+    const full = h.length === 3 ? h.split("").map(c => c+c).join("") : h;
+    const n = parseInt(full, 16);
+    return [(n>>16)&255, (n>>8)&255, n&255];
+  }
+
+  async function readJsonFile(file) {
+    const txt = await file.text();
+    return JSON.parse(txt);
+  }
+
+  function loadImageFromFile(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("No se pudo cargar la imagen del campo.")); };
+      img.src = url;
+    });
+  }
+
+  async function findFrameInJsonl(file, targetFrame) {
+    const reader = file.stream().getReader();
+    const decoder = new TextDecoder("utf-8");
+    let { value, done } = await reader.read();
+    let buffer = "";
+
+    while (!done) {
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) continue;
+
+        let obj;
+        try { obj = JSON.parse(line); } catch(e) { continue; }
+        if (obj && obj.frame === targetFrame) {
+          try { reader.cancel(); } catch(e) {}
+          return obj;
+        }
+      }
+      ({ value, done } = await reader.read());
+    }
+
+    buffer += decoder.decode();
+    const tail = buffer.trim();
+    if (tail) {
+      try {
+        const obj = JSON.parse(tail);
+        if (obj && obj.frame === targetFrame) return obj;
+      } catch(e) {}
+    }
+    return null;
+  }
+
+  async function getFrameCached(file, frameNum){
+    if (frameCache.has(frameNum)) return frameCache.get(frameNum);
+    if (frameNum < 0) return null;
+    const obj = await findFrameInJsonl(file, frameNum);
+    if (obj) cacheFrameObj(obj);
+    return obj;
+  }
+
+  async function stopPlayStreamInternal() {
+    playStream.active = false;
+    playStream.buffer = "";
+    playStream.lastObj = null;
+    if (playStream.reader) {
+      try { await playStream.reader.cancel(); } catch(e) {}
+      playStream.reader = null;
+    }
+    playStream.decoder = null;
+    playStream.file = null;
+  }
+
+  async function startPlayStream(file) {
+    await stopPlayStreamInternal();
+    playStream.file = file;
+    playStream.reader = file.stream().getReader();
+    playStream.decoder = new TextDecoder("utf-8");
+    playStream.buffer = "";
+    playStream.active = true;
+  }
+
+  async function readNextJsonlObjectFromPlayStream() {
+    if (!playStream.active || !playStream.reader) return null;
+
+    while (true) {
+      const idx = playStream.buffer.indexOf("\n");
+      if (idx >= 0) {
+        const line = playStream.buffer.slice(0, idx).trim();
+        playStream.buffer = playStream.buffer.slice(idx + 1);
+        if (!line) continue;
+
+        try { return JSON.parse(line); } catch(e) { continue; }
+      }
+
+      const { value, done } = await playStream.reader.read();
+      if (done) return null;
+
+      playStream.buffer += playStream.decoder.decode(value, { stream: true });
+    }
+  }
+
+  async function playStreamReadUntilAtLeastFrame(targetFrame) {
+    while (true) {
+      const obj = await readNextJsonlObjectFromPlayStream();
+      if (!obj) return null;
+      if (typeof obj.frame !== "number") continue;
+      if (obj.frame >= targetFrame) {
+        cacheFrameObj(obj);
+        const prev = playStream.lastObj;
+        playStream.lastObj = obj;
+        return { obj, prev };
+      }
+    }
+  }
+
+  function toCanvasXY(x, y, whichCanvas = "main") {
+    const c = whichCanvas === "vor" ? canvasVor : canvas;
+    const sx = c.width / pitchW;
+    const sy = c.height / pitchH;
+    return [x * sx, (pitchH - y) * sy];
+  }
+
+  function drawPitchImageBase(which = "main") {
+    const c = which === "vor" ? canvasVor : canvas;
+    const cctx = which === "vor" ? ctxVor : ctx;
+
+    cctx.clearRect(0, 0, c.width, c.height);
+
+    if (!pitchImg) {
+      cctx.fillStyle = "#0b7a2a";
+      cctx.fillRect(0, 0, c.width, c.height);
+      cctx.fillStyle = "rgba(255,255,255,0.9)";
+      cctx.font = "18px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      cctx.fillText("Sube una imagen de campo (png/jpg) para usarla como fondo.", 18, 34);
+      return;
+    }
+
+    cctx.drawImage(pitchImg, 0, 0, c.width, c.height);
+  }
+
+  function buildPlayerMaps(matchData) {
+    const pMap = new Map();
+    (matchData.players || []).forEach(p => {
+      const pid = p.id;
+      const team = p.team_id;
+      const baseLabel = lastWord(p.last_name || p.short_name || "");
+      const fullName = (p.first_name ? (p.first_name + " ") : "") + (p.last_name || "");
+      pMap.set(pid, { team, baseLabel, fullName: fullName.trim() });
+    });
+    return pMap;
+  }
+
+  function renderTable(rows) {
+    const container = $("tableContainer");
+    if (!rows || !rows.length) {
+      container.innerHTML = "<div class='small'>No hay datos para mostrar.</div>";
+      return;
+    }
+
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+
+    let html = "<table><thead><tr>" +
+      "<th>Tipo</th><th>Equipo</th><th>Nombre</th><th>X</th><th>Y</th>" +
+      "</tr></thead><tbody>";
+
+    for (const r of rows) {
+      html += "<tr>" +
+        `<td>${esc(r.type)}</td>` +
+        `<td>${esc(r.team)}</td>` +
+        `<td>${esc(r.name)}</td>` +
+        `<td>${esc(r.x)}</td>` +
+        `<td>${esc(r.y)}</td>` +
+      "</tr>";
+    }
+
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  }
+
+  function renderTableSimple(rows) {
+    const container = $("tableSimpleContainer");
+    if (!rows || !rows.length) {
+      container.innerHTML = "<div class='small'>No hay datos para mostrar.</div>";
+      return;
+    }
+
+    const simple = rows
+      .filter(r => r.name)
+      .map(r => ({ name: r.name, x: r.x, y: r.y }));
+
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+
+    let html = "<table><thead><tr>" +
+      "<th>Nombre</th><th>X</th><th>Y</th>" +
+      "</tr></thead><tbody>";
+
+    for (const r of simple) {
+      html += "<tr>" +
+        `<td>${esc(r.name)}</td>` +
+        `<td>${esc(r.x)}</td>` +
+        `<td>${esc(r.y)}</td>` +
+      "</tr>";
+    }
+
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  }
+
+  function rad2deg(r){ return r * 180 / Math.PI; }
+  function wrapDeg(d){
+    let x = ((d + 180) % 360 + 360) % 360 - 180;
+    return x;
+  }
+  function cosineEase(alpha){
+    const a = Math.max(0, Math.min(1, alpha));
+    return 0.5 - 0.5 * Math.cos(Math.PI * a);
+  }
+  function smoothStep(prev, curr, alpha=0.35){
+    if (!isFinite(prev)) return curr;
+    if (!isFinite(curr)) return prev;
+    const w = cosineEase(alpha);
+    return prev + (curr - prev) * w;
+  }
+
+  function computeDeltaKinematicsFromPositions(posPrev, posCurr, posPrev2){
+    if (!posPrev || !posCurr) return null;
+
+    const dx0 = posCurr.x - posPrev.x;
+    const dy0 = posCurr.y - posPrev.y;
+    const dist0 = Math.hypot(dx0, dy0);
+    const v0 = dist0 / DT;
+    const speedKmh = v0 * 3.6;
+
+    let accel = NaN;
+    let dAng = NaN;
+
+    if (posPrev2){
+      const dx1 = posPrev.x - posPrev2.x;
+      const dy1 = posPrev.y - posPrev2.y;
+      const dist1 = Math.hypot(dx1, dy1);
+      const v1 = dist1 / DT;
+
+      accel = (v0 - v1) / DT;
+
+      const ang0 = rad2deg(Math.atan2(dy0, dx0));
+      const ang1 = rad2deg(Math.atan2(dy1, dx1));
+      dAng = wrapDeg(ang0 - ang1);
+    }
+
+    return { speedKmh, accel, dAng };
+  }
+
+  function applyCosineSmoothingForKey(key, raw){
+    if (!raw) return null;
+    const prev = smoothState.get(key) || {};
+    const sSpeed = smoothStep(prev.speedKmh, raw.speedKmh, 0.35);
+    const sAccel = smoothStep(prev.accel, raw.accel, 0.35);
+    const sAng = smoothStep(prev.dAng, raw.dAng, 0.35);
+    const next = { speedKmh: sSpeed, accel: sAccel, dAng: sAng };
+    smoothState.set(key, next);
+    return next;
+  }
+
+  function labelForMode(baseLabel, kin){
+    if (labelMode === "name") return baseLabel;
+    if (!kin) return "";
+    if (labelMode === "speed") return isFinite(kin.speedKmh) ? `${kin.speedKmh.toFixed(1)} km/h` : "";
+    if (labelMode === "accel") return isFinite(kin.accel) ? `${kin.accel.toFixed(1)} m/s²` : "";
+    if (labelMode === "angle") return isFinite(kin.dAng) ? `${Math.abs(kin.dAng).toFixed(1)} º` : "";
+    return baseLabel;
+  }
+
+  function getPlayerPosMap(frameObj){
+    const m = new Map();
+    (frameObj?.player_data || []).forEach(pl => {
+      if (pl.x == null || pl.y == null) return;
+      m.set(pl.player_id, { x: pl.x, y: pl.y });
+    });
+    return m;
+  }
+
+  function drawVoronoi(pointsPx, pointColors, pointLabels, ballPxOrNull) {
+    drawPitchImageBase("vor");
+
+    const rPoint = 5;
+    const labelDxPx = 12;
+    const labelDyPx = -10;
+
+    const hasVor = (pointsPx && pointsPx.length >= 2 && window.d3 && window.d3.Delaunay);
+
+    if (hasVor) {
+      const delaunay = d3.Delaunay.from(pointsPx);
+      const vor = delaunay.voronoi([0, 0, canvasVor.width, canvasVor.height]);
+
+      ctxVor.save();
+      ctxVor.globalAlpha = 0.28;
+
+      for (let i = 0; i < pointsPx.length; i++) {
+        const poly = vor.cellPolygon(i);
+        if (!poly || poly.length < 3) continue;
+
+        ctxVor.beginPath();
+        ctxVor.moveTo(poly[0][0], poly[0][1]);
+        for (let k = 1; k < poly.length; k++) ctxVor.lineTo(poly[k][0], poly[k][1]);
+        ctxVor.closePath();
+
+        ctxVor.fillStyle = pointColors[i];
+        ctxVor.fill();
+      }
+      ctxVor.restore();
+    }
+
+    ctxVor.save();
+    ctxVor.globalAlpha = 1;
+
+    for (let i = 0; i < (pointsPx?.length || 0); i++) {
+      const [x, y] = pointsPx[i];
+      ctxVor.beginPath();
+      ctxVor.arc(x, y, rPoint, 0, Math.PI*2);
+      ctxVor.fillStyle = pointColors[i];
+      ctxVor.fill();
+    }
+
+    if (ballPxOrNull) {
+      const [bx, by] = ballPxOrNull;
+      ctxVor.beginPath();
+      ctxVor.arc(bx, by, rPoint, 0, Math.PI*2);
+      ctxVor.fillStyle = "#000";
+      ctxVor.fill();
+    }
+
+    ctxVor.font = "16px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctxVor.textBaseline = "middle";
+
+    for (let i = 0; i < (pointsPx?.length || 0); i++) {
+      const [x, y] = pointsPx[i];
+      const label = pointLabels?.[i] ?? "";
+      if (!label) continue;
+
+      const lx = x + labelDxPx;
+      const ly = y + labelDyPx;
+
+      ctxVor.lineWidth = 4;
+      ctxVor.strokeStyle = "rgba(255,255,255,0.9)";
+      ctxVor.strokeText(label, lx, ly);
+      ctxVor.fillStyle = "rgba(0,0,0,0.9)";
+      ctxVor.fillText(label, lx, ly);
+    }
+
+    ctxVor.restore();
+  }
+
+  function plotFrame(matchData, frameObj, colors, prevObjOrNull, prev2ObjOrNull) {
+    drawPitchImageBase("main");
+
+    const homeId = matchData.home_team?.id;
+    const homeName = matchData.home_team?.name || "Home";
+    const awayName = matchData.away_team?.name || "Away";
+
+    const pMap = buildPlayerMaps(matchData);
+
+    const r = 5;
+    const labelDx = 0.8, labelDy = 0.8;
+
+    ctx.font = "16px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textBaseline = "middle";
+
+    const tableRows = [];
+    const vorPointsPx = [];
+    const vorPointColors = [];
+    const vorPointLabels = [];
+
+    const currPos = getPlayerPosMap(frameObj);
+    const prevPos = prevObjOrNull ? getPlayerPosMap(prevObjOrNull) : null;
+    const prev2Pos = prev2ObjOrNull ? getPlayerPosMap(prev2ObjOrNull) : null;
+
+    (frameObj.player_data || []).forEach(pl => {
+      if (pl.x == null || pl.y == null) return;
+      if (selectedPlayerIds && !selectedPlayerIds.has(pl.player_id)) return;
+
+      const x = pl.x + 52.5;
+      const y = pl.y + 34;
+
+      const info = pMap.get(pl.player_id);
+      if (!info) return;
+
+      const isHome = info.team === homeId;
+      const color = isHome ? colors.home : colors.away;
+
+      const [cx, cy] = toCanvasXY(x, y, "main");
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      let labelToShow = info.baseLabel;
+      if (labelMode !== "name") {
+        const p0 = currPos.get(pl.player_id);
+        const p1 = prevPos ? prevPos.get(pl.player_id) : null;
+        const p2 = prev2Pos ? prev2Pos.get(pl.player_id) : null;
+        const raw = computeDeltaKinematicsFromPositions(p1, p0, p2);
+        const kin = applyCosineSmoothingForKey(`p:${pl.player_id}`, raw);
+        labelToShow = labelForMode(info.baseLabel, kin) || info.baseLabel;
+      }
+
+      const [lx, ly] = toCanvasXY(x + labelDx, y + labelDy, "main");
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.strokeText(labelToShow, lx, ly);
+      ctx.fillStyle = "rgba(0,0,0,0.9)";
+      ctx.fillText(labelToShow, lx, ly);
+
+      tableRows.push({
+        type: "Jugador",
+        team: isHome ? homeName : awayName,
+        name: info.fullName || info.baseLabel,
+        x: numToComma(x, 2),
+        y: numToComma(y, 2)
+      });
+
+      const [vx, vy] = toCanvasXY(x, y, "vor");
+      vorPointsPx.push([vx, vy]);
+      vorPointColors.push(color);
+      vorPointLabels.push(labelToShow);
+    });
+
+    const b = frameObj.ball_data || {};
+    let ballVorPx = null;
+
+    if (showBall && b.x != null && b.y != null) {
+      const x = b.x + 52.5;
+      const y = b.y + 34;
+
+      const [cx, cy] = toCanvasXY(x, y, "main");
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.fillStyle = "#000";
+      ctx.fill();
+
+      const [lx, ly] = toCanvasXY(x + 0.8, y + 0.8, "main");
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.strokeText("ball", lx, ly);
+      ctx.fillStyle = "rgba(0,0,0,0.9)";
+      ctx.fillText("ball", lx, ly);
+
+      ballVorPx = toCanvasXY(x, y, "vor");
+
+      tableRows.push({
+        type: "Balón",
+        team: "-",
+        name: "ball",
+        x: numToComma(x, 2),
+        y: numToComma(y, 2)
+      });
+    } else {
+      tableRows.push({ type: "Balón", team: "-", name: "ball", x: "", y: "" });
+    }
+
+    lastTableRows = tableRows;
+
+    renderTable(tableRows);
+    renderTableSimple(tableRows);
+    $("csvBtn").disabled = false;
+
+    drawVoronoi(vorPointsPx, vorPointColors, vorPointLabels, ballVorPx);
+
+    update3D(matchData, frameObj, colors);
+
+    $("xlsxPosBtn").disabled = false;
+    $("xlsxPhysBtn").disabled = false;
+
+    return { homeName, awayName };
+  }
+
+  async function exportPdf(header, timestampStr, colors) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+
+    const margin = 28;
+    const headerH = 28;
+    const gap = 10;
+
+    const homeRGB = hexToRgbArray(colors.home);
+    const awayRGB = hexToRgbArray(colors.away);
+
+    function drawHeader(extraRightText = "") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+
+      let x = margin;
+      const y = margin + 18;
+
+      doc.setTextColor(...homeRGB);
+      doc.text(header.homeName, x, y);
+      x += doc.getTextWidth(header.homeName);
+
+      doc.setTextColor(0,0,0);
+      doc.text("  vs  ", x, y);
+      x += doc.getTextWidth("  vs  ");
+
+      doc.setTextColor(...awayRGB);
+      doc.text(header.awayName, x, y);
+      x += doc.getTextWidth(header.awayName);
+
+      doc.setTextColor(0,0,0);
+      doc.setFont("helvetica", "normal");
+      const tail = `   |   Timestamp: ${timestampStr}${extraRightText ? "   |   " + extraRightText : ""}`;
+      doc.text(tail, x, y);
+    }
+
+    function addCanvasToPage(cnv) {
+      const imgData = cnv.toDataURL("image/png", 1.0);
+
+      const availW = pageW - 2 * margin;
+      const availH = pageH - 2 * margin - headerH - gap;
+
+      const aspect = cnv.width / cnv.height;
+
+      let drawW = availW;
+      let drawH = drawW / aspect;
+      if (drawH > availH) {
+        drawH = availH;
+        drawW = drawH * aspect;
+      }
+
+      const imgX = margin + (availW - drawW) / 2;
+      const imgY = margin + headerH + gap + (availH - drawH) / 2;
+
+      doc.addImage(imgData, "PNG", imgX, imgY, drawW, drawH, undefined, "FAST");
+    }
+
+    drawHeader("Vista");
+    addCanvasToPage(canvas);
+
+    doc.addPage();
+    drawHeader("Voronoi");
+    addCanvasToPage(canvasVor);
+
+    doc.save(`tracking_${timestampStr.replace(/[:]/g,"-")}.pdf`);
+  }
+
+  const CSV_SEP = ";";
+  function csvEscape(value) {
+    const s = String(value ?? "");
+    if (/[;"\n\r]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+    return s;
+  }
+  function buildCsvString() {
+    if (!lastTableRows || !lastTableRows.length) return "";
+    const header = ["Tipo","Equipo","Nombre","X","Y"].map(csvEscape).join(CSV_SEP);
+    const lines = lastTableRows.map(r => (
+      [r.type, r.team, r.name, r.x, r.y].map(csvEscape).join(CSV_SEP)
+    ));
+    return [header, ...lines].join("\n");
+  }
+  function exportCsvForIframes() {
+    if (!lastTableRows || !lastTableRows.length) return;
+
+    $("csvFallback").style.display = "none";
+    $("csvTextWrap").style.display = "none";
+
+    if (currentCsvBlobUrl) {
+      try { URL.revokeObjectURL(currentCsvBlobUrl); } catch(e) {}
+      currentCsvBlobUrl = null;
+    }
+
+    const csv = buildCsvString();
+    if (!csv) return;
+
+    const fname = `coordenadas_${(lastTimestampStr || "timestamp").replace(/[:]/g,"-")}.csv`;
+
+    $("csvText").value = csv;
+    $("csvTextWrap").style.display = "block";
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const blobUrl = URL.createObjectURL(blob);
+    currentCsvBlobUrl = blobUrl;
+
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = fname;
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+
+    let ok = false;
+    try { a.click(); ok = true; } catch(e) { ok = false; }
+    a.remove();
+
+    if (!ok) {
+      $("csvLink").href = blobUrl;
+      $("csvLink").textContent = `Abrir CSV (${fname})`;
+      $("csvFallback").style.display = "block";
+      log("⚠️ El iframe puede bloquear descargas. Usa 'Abrir CSV' o copia/pega el CSV generado.");
+    } else {
+      log(`✅ CSV generado: ${fname}`);
+      setTimeout(() => {
+        if (currentCsvBlobUrl) {
+          try { URL.revokeObjectURL(currentCsvBlobUrl); } catch(e) {}
+          currentCsvBlobUrl = null;
+        }
+      }, 1500);
+    }
+  }
+
+  function normalizeTime(min, sec, tenth) {
+    min = Math.max(0, isFinite(min) ? min : 0);
+    sec = isFinite(sec) ? sec : 0;
+    tenth = isFinite(tenth) ? tenth : 0;
+
+    if (tenth >= 10) {
+      const carry = Math.floor(tenth / 10);
+      tenth = tenth % 10;
+      sec += carry;
+    }
+    if (tenth < 0) {
+      const borrow = Math.ceil(Math.abs(tenth) / 10);
+      tenth += 10 * borrow;
+      sec -= borrow;
+    }
+
+    if (sec >= 60) {
+      const carry = Math.floor(sec / 60);
+      sec = sec % 60;
+      min += carry;
+    }
+    if (sec < 0) {
+      const borrow = Math.ceil(Math.abs(sec) / 60);
+      sec += 60 * borrow;
+      min -= borrow;
+    }
+
+    if (min < 0) { min = 0; sec = 0; tenth = 0; }
+    return { min, sec, tenth };
+  }
+
+  function readTimeFromTop() {
+    return {
+      period: $("period").value,
+      min: parseInt($("min").value, 10),
+      sec: parseInt($("sec").value, 10),
+      tenth: parseInt($("tenth").value, 10)
+    };
+  }
+  function readTimeFromBottom() {
+    return {
+      period: $("period2").value,
+      min: parseInt($("min2").value, 10),
+      sec: parseInt($("sec2").value, 10),
+      tenth: parseInt($("tenth2").value, 10)
+    };
+  }
+  function writeTimeToTop({ period, min, sec, tenth }) {
+    $("period").value = String(period);
+    $("min").value = String(min);
+    $("sec").value = String(sec);
+    $("tenth").value = String(tenth);
+  }
+  function writeTimeToBottom({ period, min, sec, tenth }) {
+    $("period2").value = String(period);
+    $("min2").value = String(min);
+    $("sec2").value = String(sec);
+    $("tenth2").value = String(tenth);
+    $("tsBadge2").textContent = `⏱ ${fmtTimestamp(min, sec, tenth)}`;
+  }
+
+  function syncBottomFromTop() {
+    if (syncingTime) return;
+    syncingTime = true;
+    try {
+      const t = readTimeFromTop();
+      const n = normalizeTime(t.min, t.sec, t.tenth);
+      writeTimeToTop({ period: t.period, ...n });
+      writeTimeToBottom({ period: t.period, ...n });
+    } finally {
+      syncingTime = false;
+    }
+  }
+
+  function syncTopFromBottom() {
+    if (syncingTime) return;
+    syncingTime = true;
+    try {
+      const t = readTimeFromBottom();
+      const n = normalizeTime(t.min, t.sec, t.tenth);
+      writeTimeToBottom({ period: t.period, ...n });
+      writeTimeToTop({ period: t.period, ...n });
+    } finally {
+      syncingTime = false;
+    }
+  }
+
+  function addTenthsToTop(deltaTenths) {
+    const t = readTimeFromTop();
+    const n = normalizeTime(t.min, t.sec, t.tenth + deltaTenths);
+    writeTimeToTop({ period: t.period, ...n });
+    syncBottomFromTop();
+  }
+
+  async function ensureLoadedMatch() {
+    const matchFile = $("matchFile").files[0];
+    if (!matchFile) throw new Error("Sube match.json");
+    if (!matchDataCache) {
+      log("Leyendo match.json…");
+      matchDataCache = await readJsonFile(matchFile);
+    }
+    return matchDataCache;
+  }
+
+  function getPeriodStartFrame(matchData) {
+    const period = parseInt($("period").value, 10);
+    const periods = matchData.match_periods || [];
+    const pObj = periods.find(p => p.period === period);
+    if (!pObj) throw new Error(`No encuentro match_periods para period=${period} en match.json`);
+    return (pObj.start_frame ?? 0);
+  }
+
+  function getTargetFrameFromInputs(matchData) {
+    const startFrame = getPeriodStartFrame(matchData);
+
+    const t = readTimeFromTop();
+    const n = normalizeTime(t.min, t.sec, t.tenth);
+
+    writeTimeToTop({ period: t.period, ...n });
+    syncBottomFromTop();
+
+    const totalSeconds = (n.min * 60) + n.sec + (n.tenth * 0.1);
+    const framesOffset = Math.round(totalSeconds * 10);
+    const targetFrame = startFrame + framesOffset;
+    const tsStr = fmtTimestamp(n.min, n.sec, n.tenth);
+    return { targetFrame, tsStr };
+  }
+
+  async function previewRender(noPdf = true) {
+    const trackingFile = $("trackingFile").files[0];
+    if (!trackingFile) { log("❌ Sube tracking.jsonl"); return null; }
+    if (!pitchImg) { log("❌ Sube la imagen de campo (png/jpg)"); return null; }
+
+    try {
+      $("okBtn").disabled = true;
+      $("plusBtn").disabled = true;
+      $("minusBtn").disabled = true;
+
+      const matchData = await ensureLoadedMatch();
+      const { targetFrame, tsStr } = getTargetFrameFromInputs(matchData);
+
+      const colors = getColors();
+      lastTimestampStr = tsStr;
+
+      log(`Buscando frame=${targetFrame} (timestamp=${tsStr}) en tracking.jsonl…`);
+
+      const frameObj = await getFrameCached(trackingFile, targetFrame);
+      if (!frameObj) {
+        log(`❌ No he encontrado el frame ${targetFrame} en el jsonl. Revisa period/timestamp.`);
+        return null;
+      }
+
+      const prev = await getFrameCached(trackingFile, targetFrame - 1);
+      const prev2 = await getFrameCached(trackingFile, targetFrame - 2);
+
+      const header = plotFrame(matchData, frameObj, colors, prev, prev2);
+
+      log(noPdf ? `✅ Vista actualizada (timestamp ${tsStr}).` : `✅ Listo para PDF (timestamp ${tsStr}).`);
+      return { header, tsStr, colors };
+    } catch (e) {
+      console.error(e);
+      log("❌ Error: " + (e?.message || String(e)));
+      return null;
+    } finally {
+      $("okBtn").disabled = false;
+      $("plusBtn").disabled = false;
+      $("minusBtn").disabled = false;
+    }
+  }
+
+  // ---- Manual video ----
+  function updateManualVideoBadge() {
+    const v = $("manualVideoPlayer");
+    const badge = $("manualTsBadge");
+    if (!v || !badge) return;
+    const t = (v.currentTime || 0);
+    badge.textContent = `🎬 ${fmtVideoTimestamp(t)}`;
+  }
+  function roundToTenth(t) { return Math.round(t * 10) / 10; }
+  function manualVideoSeekToTime(targetSeconds, immediate = false) {
+    const v = $("manualVideoPlayer");
+    if (!v || !v.src) return;
+
+    const dur = (isFinite(v.duration) && v.duration > 0) ? v.duration : Infinity;
+    const clamped = Math.max(0, Math.min(targetSeconds, dur === Infinity ? targetSeconds : (dur - 0.001)));
+    const desired = roundToTenth(clamped);
+
+    if (manualVideoSeekDebounce) clearTimeout(manualVideoSeekDebounce);
+    manualVideoSeekDebounce = setTimeout(() => {
+      try { v.currentTime = desired; } catch(e) {}
+      updateManualVideoBadge();
+    }, immediate ? 0 : 15);
+  }
+  function manualVideoSeekDelta(deltaSeconds, immediate = false) {
+    const v = $("manualVideoPlayer");
+    if (!v || !v.src) return;
+    manualVideoSeekToTime((v.currentTime || 0) + deltaSeconds, immediate);
+  }
+  function manualVideoTryPlayNow() {
+    const v = $("manualVideoPlayer");
+    if (!v || !v.src) return;
+    $("videoSyncHint").style.display = "none";
+    try {
+      const p = v.play();
+      if (p && typeof p.catch === "function") {
+        p.catch(() => { $("videoSyncHint").style.display = "inline"; });
+      }
+    } catch(e) {
+      $("videoSyncHint").style.display = "inline";
+    }
+  }
+  function manualVideoPause() {
+    const v = $("manualVideoPlayer");
+    if (!v || !v.src) return;
+    try { v.pause(); } catch(e) {}
+  }
+  function manualVideoSyncDuringPlay() {
+    const v = $("manualVideoPlayer");
+    if (!v || !v.src) return;
+    const desired = manualVideoPlayAnchorTime + (manualVideoPlayElapsedTenths * 0.1);
+    const diff = Math.abs((v.currentTime || 0) - desired);
+    if (diff > 0.07) manualVideoSeekToTime(desired, true);
+  }
+
+  function attachManualVideoFile(file) {
+    const v = $("manualVideoPlayer");
+    if (!v || !file) return;
+
+    if (manualVideoBlobUrl) {
+      try { URL.revokeObjectURL(manualVideoBlobUrl); } catch(e) {}
+      manualVideoBlobUrl = null;
+    }
+
+    const url = URL.createObjectURL(file);
+    manualVideoBlobUrl = url;
+
+    v.pause();
+    v.removeAttribute("src");
+    v.load();
+
+    v.src = url;
+    v.playsInline = true;
+    v.preload = "metadata";
+
+    manualVideoPlayAnchorTime = 0;
+    manualVideoPlayElapsedTenths = 0;
+
+    v.onloadedmetadata = () => {
+      try { v.currentTime = 0; } catch(e) {}
+      updateManualVideoBadge();
+      log(`✅ Vídeo manual adjuntado: ${file.name}`);
+    };
+
+    v.onerror = () => {
+      log("❌ No se pudo cargar/reproducir el vídeo adjuntado (formato/codec no soportado).");
+    };
+  }
+
+  function setPlayBadge() {
+    if (playTimerId) {
+      const secsLeft = (playStepsLeft / 10);
+      $("playStatus").textContent = `Play: corriendo (${secsLeft.toFixed(1)}s)`;
+    } else {
+      $("playStatus").textContent = "Play: parado";
+    }
+  }
+
+  async function stopPlay() {
+    if (playTimerId) {
+      clearInterval(playTimerId);
+      playTimerId = null;
+    }
+    await stopPlayStreamInternal();
+    setPlayBadge();
+    manualVideoPause();
+  }
+
+  async function startPlay() {
+    if (playTimerId) return;
+
+    const v = $("manualVideoPlayer");
+    manualVideoPlayElapsedTenths = 0;
+    manualVideoPlayAnchorTime = (v && v.src) ? (v.currentTime || 0) : 0;
+    manualVideoTryPlayNow();
+
+    const trackingFile = $("trackingFile").files[0];
+    if (!trackingFile) { log("❌ Sube tracking.jsonl"); return; }
+    if (!pitchImg) { log("❌ Sube la imagen de campo (png/jpg)"); return; }
+
+    const matchData = await ensureLoadedMatch();
+    const colors = getColors();
+
+    playStepsLeft = 1200;
+
+    const { targetFrame, tsStr } = getTargetFrameFromInputs(matchData);
+    lastTimestampStr = tsStr;
+
+    smoothState.clear();
+
+    log(`▶ Play: inicializando stream y saltando a frame=${targetFrame}...`);
+    await startPlayStream(trackingFile);
+    playStream.matchData = matchData;
+
+    const firstPack = await playStreamReadUntilAtLeastFrame(targetFrame);
+    if (!firstPack || !firstPack.obj) {
+      log("❌ No se pudo leer el JSONL (fin de archivo).");
+      await stopPlay();
+      return;
+    }
+
+    plotFrame(matchData, firstPack.obj, colors, null, null);
+    log(`✅ Play listo en ${tsStr} (frame=${firstPack.obj.frame}).`);
+
+    playLastTick = performance.now();
+    setPlayBadge();
+
+    let prev1 = firstPack.obj;
+    let prev2 = null;
+
+    playTimerId = setInterval(async () => {
+      try {
+        if (playStepsLeft <= 0) { await stopPlay(); return; }
+
+        const now = performance.now();
+        const elapsed = now - playLastTick;
+        const steps = Math.max(1, Math.min(20, Math.floor(elapsed / 100) || 1));
+        playLastTick = now;
+
+        addTenthsToTop(steps);
+        playStepsLeft -= steps;
+        if (playStepsLeft < 0) playStepsLeft = 0;
+
+        manualVideoPlayElapsedTenths += steps;
+        manualVideoSyncDuringPlay();
+
+        const { targetFrame: desiredFrame, tsStr: newTsStr } = getTargetFrameFromInputs(matchData);
+        lastTimestampStr = newTsStr;
+
+        const pack = await playStreamReadUntilAtLeastFrame(desiredFrame);
+        if (!pack || !pack.obj) {
+          log("⚠️ Fin del JSONL durante Play.");
+          await stopPlay();
+          return;
+        }
+
+        const curr = pack.obj;
+        plotFrame(matchData, curr, colors, prev1, prev2);
+
+        prev2 = prev1;
+        prev1 = curr;
+
+        setPlayBadge();
+        if (playStepsLeft <= 0) await stopPlay();
+      } catch (e) {
+        console.error(e);
+        await stopPlay();
+      }
+    }, 100);
+  }
+
+  function guessMimeType() {
+    const candidates = ["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"];
+    for (const t of candidates) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) return t;
+    }
+    return "";
+  }
+
+  async function exportVideo({ mode }) {
+    if (isRecording) { log("⚠️ Ya se está generando un vídeo."); return; }
+
+    const trackingFile = $("trackingFile").files[0];
+    if (!trackingFile) { log("❌ Sube tracking.jsonl"); return; }
+    if (!pitchImg) { log("❌ Sube la imagen de campo (png/jpg)"); return; }
+
+    await stopPlay();
+
+    const matchData = await ensureLoadedMatch();
+    const colors = getColors();
+
+    const { targetFrame, tsStr } = getTargetFrameFromInputs(matchData);
+    lastTimestampStr = tsStr;
+
+    const durationS = getVideoDurationSeconds();
+    const fps = 10;
+    const totalFrames = Math.max(1, Math.round(durationS * fps));
+
+    $("videoFallback").style.display = "none";
+    if (currentVideoBlobUrl) {
+      try { URL.revokeObjectURL(currentVideoBlobUrl); } catch(e) {}
+      currentVideoBlobUrl = null;
+    }
+
+    const recordCanvas = (mode === "voronoi") ? canvasVor : canvas;
+
+    if (!recordCanvas.captureStream || !window.MediaRecorder) {
+      log("❌ Tu navegador no soporta captura de vídeo desde canvas (MediaRecorder). Prueba Chrome/Edge.");
+      return;
+    }
+
+    const stream = recordCanvas.captureStream(fps);
+    const mimeType = guessMimeType();
+    const options = mimeType ? { mimeType } : undefined;
+
+    let recorder;
+    try { recorder = new MediaRecorder(stream, options); }
+    catch (e) { recorder = new MediaRecorder(stream); }
+
+    const chunks = [];
+    recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+
+    isRecording = true;
+    $("videoVorBtn").disabled = true;
+    $("videoPlainBtn").disabled = true;
+
+    const label = (mode === "voronoi") ? "Vídeo Voronoi" : "Vídeo";
+    log(`🎥 Generando ${label} (${durationS}s) desde ${tsStr}...`);
+
+    smoothState.clear();
+
+    await startPlayStream(trackingFile);
+    playStream.matchData = matchData;
+
+    const firstPack = await playStreamReadUntilAtLeastFrame(targetFrame);
+    if (!firstPack || !firstPack.obj) {
+      await stopPlayStreamInternal();
+      isRecording = false;
+      $("videoVorBtn").disabled = false;
+      $("videoPlainBtn").disabled = false;
+      log("❌ No se pudo leer el JSONL para iniciar el vídeo (fin de archivo).");
+      return;
+    }
+
+    let prev1 = firstPack.obj;
+    let prev2 = null;
+
+    plotFrame(matchData, firstPack.obj, colors, null, null);
+
+    const startAt = performance.now();
+    recorder.start();
+
+    for (let i = 0; i < totalFrames; i++) {
+      addTenthsToTop(1);
+      const { targetFrame: df, tsStr: nts } = getTargetFrameFromInputs(matchData);
+      lastTimestampStr = nts;
+
+      const pack = await playStreamReadUntilAtLeastFrame(df);
+      if (!pack || !pack.obj) break;
+
+      const curr = pack.obj;
+      plotFrame(matchData, curr, colors, prev1, prev2);
+
+      prev2 = prev1;
+      prev1 = curr;
+
+      const intended = startAt + (i + 1) * 100;
+      const now = performance.now();
+      const wait = Math.max(0, intended - now);
+      await new Promise(r => setTimeout(r, wait));
+    }
+
+    await new Promise((resolve) => {
+      recorder.onstop = resolve;
+      recorder.stop();
+    });
+
+    await stopPlayStreamInternal();
+
+    const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
+    const blobUrl = URL.createObjectURL(blob);
+    currentVideoBlobUrl = blobUrl;
+
+    const base = (mode === "voronoi") ? "voronoi" : "video";
+    const fname = `${base}_${(lastTimestampStr || "timestamp").replace(/[:]/g,"-")}_${durationS}s.webm`;
+
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = fname;
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+
+    let ok = false;
+    try { a.click(); ok = true; } catch(e) { ok = false; }
+    a.remove();
+
+    if (!ok) {
+      $("videoLink").href = blobUrl;
+      $("videoLink").textContent = `Abrir vídeo (${fname})`;
+      $("videoFallback").style.display = "block";
+      log("⚠️ El iframe puede bloquear la descarga. Usa 'Abrir vídeo' y guarda desde esa pestaña.");
+    } else {
+      log(`✅ Vídeo generado: ${fname}`);
+      setTimeout(() => {
+        if (currentVideoBlobUrl) {
+          try { URL.revokeObjectURL(currentVideoBlobUrl); } catch(e) {}
+          currentVideoBlobUrl = null;
+        }
+      }, 5000);
+    }
+
+    isRecording = false;
+    $("videoVorBtn").disabled = false;
+    $("videoPlainBtn").disabled = false;
+  }
+
+  function setRec3DBadge(){
+    const b = $("rec3dBadge");
+    if (!b) return;
+    b.textContent = isRecording3D ? "REC 3D: grabando…" : "REC 3D: parado";
+  }
+
+  async function export3DVideo(){
+    if (isRecording3D) { log("⚠️ Ya se está generando un vídeo 3D."); return; }
+    if (!three.ready || !three.renderer || !three.renderer.domElement) {
+      log("❌ 3D no está listo para grabar.");
+      return;
+    }
+    if (!three.renderer.domElement.captureStream || !window.MediaRecorder) {
+      log("❌ Tu navegador no soporta captura de vídeo desde WebGL canvas (MediaRecorder). Prueba Chrome/Edge.");
+      return;
+    }
+
+    $("video3dFallback").style.display = "none";
+    if (current3DVideoBlobUrl) {
+      try { URL.revokeObjectURL(current3DVideoBlobUrl); } catch(e) {}
+      current3DVideoBlobUrl = null;
+    }
+
+    const durationS = getVideoDurationSeconds();
+    const fps = 30;
+
+    const stream = three.renderer.domElement.captureStream(fps);
+    const mimeType = guessMimeType();
+    const options = mimeType ? { mimeType } : undefined;
+
+    let recorder;
+    try { recorder = new MediaRecorder(stream, options); }
+    catch (e) { recorder = new MediaRecorder(stream); }
+
+    const chunks = [];
+    recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+
+    isRecording3D = true;
+    setRec3DBadge();
+    $("rec3dBtn").disabled = true;
+
+    log(`⏺ Grabando 3D (${durationS}s) ...`);
+    recorder.start();
+
+    await new Promise(r => setTimeout(r, Math.max(1, durationS) * 1000));
+
+    await new Promise((resolve) => {
+      recorder.onstop = resolve;
+      try { recorder.stop(); } catch(e) { resolve(); }
+    });
+
+    const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
+    const blobUrl = URL.createObjectURL(blob);
+    current3DVideoBlobUrl = blobUrl;
+
+    const fname = `video3d_${(lastTimestampStr || "timestamp").replace(/[:]/g,"-")}_${durationS}s.webm`;
+
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = fname;
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+
+    let ok = false;
+    try { a.click(); ok = true; } catch(e) { ok = false; }
+    a.remove();
+
+    if (!ok) {
+      $("video3dLink").href = blobUrl;
+      $("video3dLink").textContent = `Abrir vídeo 3D (${fname})`;
+      $("video3dFallback").style.display = "block";
+      log("⚠️ El iframe puede bloquear la descarga. Usa 'Abrir vídeo 3D' y guarda desde esa pestaña.");
+    } else {
+      log(`✅ Vídeo 3D generado: ${fname}`);
+      setTimeout(() => {
+        if (current3DVideoBlobUrl) {
+          try { URL.revokeObjectURL(current3DVideoBlobUrl); } catch(e) {}
+          current3DVideoBlobUrl = null;
+        }
+      }, 5000);
+    }
+
+    isRecording3D = false;
+    $("rec3dBtn").disabled = false;
+    setRec3DBadge();
+  }
+
+  // --- UI wiring ---
+  $("pitchImgFile").addEventListener("change", async () => {
+    const f = $("pitchImgFile").files[0];
+    if (!f) return;
+    try {
+      pitchImg = await loadImageFromFile(f);
+      drawPitchImageBase("main");
+      drawPitchImageBase("vor");
+      log("✅ Imagen de campo cargada.");
+      if (matchDataCache) await previewRender(true);
+    } catch (e) {
+      pitchImg = null;
+      drawPitchImageBase("main");
+      drawPitchImageBase("vor");
+      log("❌ No se pudo cargar la imagen de campo.");
+    }
+  });
+
+  $("homeColor").addEventListener("input", async () => {
+    setColorInputs({ home: $("homeColor").value, away: $("awayColor").value }, "top");
+    if (matchDataCache && pitchImg) await previewRender(true);
+  });
+  $("awayColor").addEventListener("input", async () => {
+    setColorInputs({ home: $("homeColor").value, away: $("awayColor").value }, "top");
+    if (matchDataCache && pitchImg) await previewRender(true);
+  });
+  $("homeColor2").addEventListener("input", async () => {
+    setColorInputs({ home: $("homeColor2").value, away: $("awayColor2").value }, "bottom");
+    if (matchDataCache && pitchImg) await previewRender(true);
+  });
+  $("awayColor2").addEventListener("input", async () => {
+    setColorInputs({ home: $("homeColor2").value, away: $("awayColor2").value }, "bottom");
+    if (matchDataCache && pitchImg) await previewRender(true);
+  });
+
+  ["min","sec","tenth"].forEach(id => {
+    $(id).addEventListener("input", () => { syncBottomFromTop(); });
+    $(id).addEventListener("change", async () => { syncBottomFromTop(); await previewRender(true); });
+  });
+  $("period").addEventListener("change", async () => { syncBottomFromTop(); await previewRender(true); });
+
+  ["min2","sec2","tenth2"].forEach(id => {
+    $(id).addEventListener("input", () => { syncTopFromBottom(); });
+    $(id).addEventListener("change", async () => { syncTopFromBottom(); await previewRender(true); });
+  });
+  $("period2").addEventListener("change", async () => { syncTopFromBottom(); await previewRender(true); });
+
+  $("okBtn").addEventListener("click", async () => {
+    const trackingFile = $("trackingFile").files[0];
+    if (!trackingFile) { log("❌ Sube tracking.jsonl"); return; }
+    if (!pitchImg) { log("❌ Sube la imagen de campo (png/jpg)"); return; }
+
+    const res = await previewRender(false);
+    if (!res) return;
+
+    log("Exportando PDF…");
+    await exportPdf(res.header, res.tsStr, res.colors);
+    log(`✅ PDF generado: tracking_${res.tsStr.replace(/[:]/g,"-")}.pdf`);
+  });
+
+  async function plusAction() { addTenthsToTop(1); manualVideoSeekDelta(+0.1, true); await previewRender(true); }
+  async function minusAction() { addTenthsToTop(-1); manualVideoSeekDelta(-0.1, true); await previewRender(true); }
+
+  $("plusBtn").addEventListener("click", plusAction);
+  $("minusBtn").addEventListener("click", minusAction);
+  $("plusBtn2").addEventListener("click", plusAction);
+  $("minusBtn2").addEventListener("click", minusAction);
+
+  $("playBtn").addEventListener("click", startPlay);
+  $("pauseBtn").addEventListener("click", stopPlay);
+  $("playBtn2").addEventListener("click", startPlay);
+  $("pauseBtn2").addEventListener("click", stopPlay);
+
+  $("csvBtn").addEventListener("click", exportCsvForIframes);
+  $("videoVorBtn").addEventListener("click", () => exportVideo({ mode: "voronoi" }));
+  $("videoPlainBtn").addEventListener("click", () => exportVideo({ mode: "plain" }));
+  $("rec3dBtn").addEventListener("click", export3DVideo);
+
+  $("manualVideoFile").addEventListener("change", () => {
+    const f = $("manualVideoFile").files?.[0];
+    if (!f) return;
+    attachManualVideoFile(f);
+  });
+
+  $("manualMinusBtn").addEventListener("click", () => manualVideoSeekDelta(-0.1, true));
+  $("manualPlusBtn").addEventListener("click", () => manualVideoSeekDelta(+0.1, true));
+
+  const mv = $("manualVideoPlayer");
+  if (mv) {
+    mv.addEventListener("timeupdate", updateManualVideoBadge);
+    mv.addEventListener("seeked", updateManualVideoBadge);
+    mv.addEventListener("loadedmetadata", updateManualVideoBadge);
+    mv.addEventListener("play", updateManualVideoBadge);
+    mv.addEventListener("pause", updateManualVideoBadge);
+  }
+
+  drawPitchImageBase("main");
+  drawPitchImageBase("vor");
+  renderTable(null);
+  renderTableSimple(null);
+
+  syncBottomFromTop();
+  setColorInputs({ home: $("homeColor").value, away: $("awayColor").value }, "top");
+  setPlayBadge();
+  setRec3DBadge();
+
+  init3D();
+
+  log("Sube match.json, tracking.jsonl y la imagen del campo. La vista 3D se actualiza con el mismo frame.");
+})();
+</script>
+</body>
+</html>
+<button on click=”ocultar etiqueta()”> ocultar etiqueta </button>
+

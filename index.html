@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anselmo Multi-Metric Tracking Engine</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <h1>Anselmo Analytics</h1>
+        <p class="subtitle">Multi-Metric Selection & Advanced Tracking Engine</p>
+
+        <section class="panel">
+          <h2>Data</h2>
+          <label class="inline-label">Match JSON
+            <input id="matchPath" value="2061307_match_data.json" />
+          </label>
+          <label class="inline-label">Tracking JSONL
+            <input id="trackingPath" value="2061307_tracking_extrapolated.jsonl" />
+          </label>
+          <label class="inline-label">Pitch Image
+            <input id="pitchPath" value="Football Pitch.png" />
+          </label>
+          <button id="loadDataBtn">Load Dataset</button>
+          <div id="loadStatus" class="status idle">Idle</div>
+        </section>
+
+        <section class="panel">
+          <h2>Metrics Panel</h2>
+          <input id="metricSearch" placeholder="Search metrics..." />
+          <div id="metricsContainer"></div>
+          <div class="panel-row">
+            <button id="selectAllMetricsBtn">Select All</button>
+            <button id="clearMetricsBtn">Clear</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Mode</h2>
+          <label class="inline-label">Visualization Mode
+            <select id="modeSelect">
+              <option value="overlay">Overlay</option>
+              <option value="composite">Composite Index</option>
+              <option value="comparative">Comparative</option>
+              <option value="temporal">Temporal Evolution</option>
+            </select>
+          </label>
+          <label class="inline-label">Player Focus
+            <select id="playerSelect"></select>
+          </label>
+          <label class="inline-label">Compare Player A
+            <select id="comparePlayerA"></select>
+          </label>
+          <label class="inline-label">Compare Player B
+            <select id="comparePlayerB"></select>
+          </label>
+          <label class="inline-label">Smoothing Window (frames)
+            <input id="smoothWindow" type="number" min="1" max="300" value="20" />
+          </label>
+        </section>
+
+        <section class="panel">
+          <h2>Composite Weights</h2>
+          <div id="weightsContainer"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Presets</h2>
+          <label class="inline-label">Preset
+            <select id="presetSelect"></select>
+          </label>
+          <div class="panel-row">
+            <button id="savePresetBtn">Save Current</button>
+            <button id="exportPresetBtn">Export Preset JSON</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Export</h2>
+          <div class="panel-row wrap">
+            <button id="exportCsvBtn">CSV</button>
+            <button id="exportXlsxBtn">XLSX</button>
+            <button id="exportJsonBtn">JSON Bundle</button>
+            <button id="exportPdfBtn">Match Report PDF</button>
+            <button id="exportHeatmapsBtn">Heatmaps</button>
+          </div>
+        </section>
+      </aside>
+
+      <main class="main-content">
+        <section class="top-controls">
+          <button id="playBtn">Play</button>
+          <button id="pauseBtn">Pause</button>
+          <button id="stepBackBtn">-0.10s</button>
+          <button id="stepFwdBtn">+0.10s</button>
+          <label>Frame
+            <input id="frameSlider" type="range" min="0" max="0" value="0" />
+          </label>
+          <span id="frameLabel">Frame: 0</span>
+          <span id="timeLabel">Time: 00:00:00.00</span>
+        </section>
+
+        <section class="canvas-grid">
+          <div class="canvas-card">
+            <h3>Pitch Layers</h3>
+            <canvas id="pitchCanvas" width="1280" height="820"></canvas>
+          </div>
+          <div class="canvas-card">
+            <h3>Temporal Trend</h3>
+            <canvas id="timelineCanvas" width="1280" height="300"></canvas>
+          </div>
+        </section>
+
+        <section class="info-grid">
+          <article class="info-card">
+            <h3>Layer Controls</h3>
+            <div id="layerControls"></div>
+          </article>
+          <article class="info-card">
+            <h3>Current Metrics</h3>
+            <div id="metricsReadout"></div>
+          </article>
+          <article class="info-card">
+            <h3>Engine Health</h3>
+            <ul id="engineHealth"></ul>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
